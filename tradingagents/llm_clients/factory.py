@@ -1,4 +1,6 @@
 
+import json
+import os
 from typing import Any
 
 from .base_client import BaseLLMClient
@@ -152,5 +154,10 @@ def create_tier_client(config: dict, tier: str, **extra) -> BaseLLMClient:
     else:
         base_url = config.get(f"{tier}_think_backend_url")
     kwargs = build_llm_kwargs({**config, "llm_provider": provider})
+    # Local servers (vLLM) take request extras per tier, e.g. Qwen thinking on/off:
+    # TRADINGAGENTS_QUICK_THINK_EXTRA_BODY={"chat_template_kwargs": {"enable_thinking": false}}
+    extra_body = os.environ.get(f"TRADINGAGENTS_{tier.upper()}_THINK_EXTRA_BODY")
+    if extra_body:
+        kwargs["extra_body"] = json.loads(extra_body)
     return create_llm_client(provider=provider, model=config[f"{tier}_think_llm"], base_url=base_url,
                              **kwargs, **extra)

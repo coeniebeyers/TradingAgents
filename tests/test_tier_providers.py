@@ -88,3 +88,17 @@ def test_the_tier_settings_are_read_from_the_environment(monkeypatch):
     assert config["deep_think_provider"] == "anthropic"
     assert config["quick_think_backend_url"] == "http://localhost:8000/v1"
     assert config["quick_think_provider"] is None
+
+
+@pytest.mark.unit
+def test_a_tier_s_extra_body_env_reaches_that_tier_only(monkeypatch):
+    made = _captured(monkeypatch)
+    monkeypatch.setenv("TRADINGAGENTS_QUICK_THINK_EXTRA_BODY",
+                       '{"chat_template_kwargs": {"enable_thinking": false}}')
+    monkeypatch.delenv("TRADINGAGENTS_DEEP_THINK_EXTRA_BODY", raising=False)
+
+    factory.create_tier_client(_config(), "quick")
+    factory.create_tier_client(_config(), "deep")
+
+    assert made[0][3]["extra_body"] == {"chat_template_kwargs": {"enable_thinking": False}}
+    assert "extra_body" not in made[1][3]
