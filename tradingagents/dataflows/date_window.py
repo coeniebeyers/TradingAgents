@@ -36,9 +36,28 @@ def get_current_date() -> str:
     return date.today().strftime("%Y-%m-%d")
 
 
-def is_historical(run_date) -> bool:
-    """Whether a run is dated before today, so live-only data would come from after it."""
-    return bool(run_date) and str(run_date) < get_current_date()
+def is_historical(run_date, today: date | None = None) -> bool:
+    """Whether a session has traded since the run's date, so live-only data would come from after it.
+
+    A run dated to the latest session is live even when that session was
+    yesterday, or Friday seen from the weekend: what live-only vendors serve now
+    is what was known at that close, give or take a weekend. Counting every run
+    not dated today as historical withheld profiles, statements, insider trades
+    and prediction markets from all analyses of the last close. Any weekday
+    strictly between the run's date and today means a session has closed since,
+    so the run is historical; public holidays count as sessions, which errs
+    towards withholding.
+    """
+    if not run_date:
+        return False
+    run_day = date.fromisoformat(str(run_date)[:10])
+    today = today or date.fromisoformat(get_current_date())
+    day = run_day + timedelta(days=1)
+    while day < today:
+        if day.weekday() < 5:
+            return True
+        day += timedelta(days=1)
+    return False
 
 
 def coverage_gap(
