@@ -199,8 +199,28 @@ def no_data_available(error: NoMarketDataError) -> str:
     )
 
 
+# Calls that don't depend on the instrument: every ticker analysed on a day asks
+# the same question, so one answer serves them all for a few hours. An answer
+# that says the data was unavailable is not kept, so the next caller tries again.
+SHARED_METHODS = {"get_global_news", "get_macro_indicators", "get_prediction_markets"}
+SHARED_TTL_SECONDS = 6 * 3600
+_NOT_KEPT = ("DATA_UNAVAILABLE", "NO_DATA_AVAILABLE")
+
+
 def route_to_vendor(method: str, *args, **kwargs):
     """Route method calls to appropriate vendor implementation with fallback support."""
+    if method in SHARED_METHODS:
+        from tradingagents.dataflows.shared_cache import cached
+
+        return cached(
+            f"route-{method}", [method, list(args), kwargs], SHARED_TTL_SECONDS,
+            lambda: _route(method, *args, **kwargs),
+            keep=lambda value: isinstance(value, str) and not value.startswith(_NOT_KEPT),
+        )
+    return _route(method, *args, **kwargs)
+
+
+def _route(method: str, *args, **kwargs):
     category = get_category_for_method(method)
     vendor_config = get_vendor(category, method)
     primary_vendors = [v.strip() for v in vendor_config.split(',')]

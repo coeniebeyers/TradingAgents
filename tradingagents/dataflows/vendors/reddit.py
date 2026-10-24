@@ -245,6 +245,24 @@ def _fetch_subreddit_rss(
     return posts
 
 
+# Reddit's anonymous limit is per IP. Spacing requests across every process
+# sharing the IP keeps a batch of tickers under it, and one fetch per ticker and
+# feed serves reruns and parallel analyses for a few hours (the feed is
+# newest-first, and every caller trims it to its own window afterwards).
+_REQUEST_SPACING_SECONDS = 7.0
+_FEED_TTL_SECONDS = 6 * 3600
+
+
+def _shared_feed(ticker: str, sub: str, limit: int, timeout: float) -> list[dict] | None:
+    from tradingagents.dataflows.shared_cache import cached, paced
+
+    def fetch():
+        with paced("reddit.com", _REQUEST_SPACING_SECONDS):
+            return _fetch_subreddit_rss(ticker, sub, limit, timeout)
+
+    return cached("reddit", [ticker.upper(), sub, limit], _FEED_TTL_SECONDS, fetch)
+
+
 def fetch_reddit_posts(
     ticker: str,
     subreddits: Iterable[str] | None = None,
@@ -277,7 +295,7 @@ def fetch_reddit_posts(
     # ("BTC") so the query actually matches discussion instead of near-nothing.
     ticker = crypto_base(ticker) or ticker
     label = ", ".join(f"r/{s}" for s in subreddits)
-    fetched = _fetch_subreddit_rss(ticker, "+".join(subreddits), _FEED_PAGE, timeout)
+    fetched = _shared_feed(ticker, "+".join(subreddits), _FEED_PAGE, timeout)
     if fetched is None:
         return f"<Reddit unavailable: fetch failed ({label}); this is not an absence of discussion>"
 

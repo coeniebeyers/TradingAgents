@@ -133,3 +133,22 @@ def _isolate_config():
     config_module._config = copy.deepcopy(default_config.DEFAULT_CONFIG)
     yield
     config_module._config = copy.deepcopy(default_config.DEFAULT_CONFIG)
+
+
+@pytest.fixture(autouse=True)
+def _own_shared_cache(tmp_path, monkeypatch):
+    """Each test gets its own shared-fetch cache and no Reddit request spacing.
+
+    The cache lives on disk and outlives a test, so one test's mocked answer
+    would otherwise be served to the next, and the spacing would sleep through
+    every Reddit test.
+    """
+    from tradingagents.dataflows import shared_cache
+
+    def root(*parts):
+        path = tmp_path.joinpath("shared-cache", *parts)
+        path.mkdir(parents=True, exist_ok=True)
+        return str(path)
+
+    monkeypatch.setattr(shared_cache, "_root", root)
+    monkeypatch.setattr("tradingagents.dataflows.vendors.reddit._REQUEST_SPACING_SECONDS", 0.0)
