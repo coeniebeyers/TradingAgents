@@ -111,3 +111,33 @@ def test_one_cache_file_per_symbol_across_days(tmp_path, monkeypatch):
 
     assert len(downloads) == 3, "each new day refetches"
     assert [p.name for p in tmp_path.iterdir()] == ["AAPL-YFin-data.csv"]
+
+
+def _write_unsettled(tmp_path, age_seconds):
+    # Friday's bar as Yahoo first publishes a JSE session: volume, but no prices yet.
+    f = tmp_path / "AAPL-YFin-data.csv"
+    pd.DataFrame({"Date": ["2026-07-16", "2026-07-17"], "Close": [100.0, None],
+                  "Volume": [10, 20]}).to_csv(f, index=False)
+    _stamp(f, NOW - pd.Timedelta(seconds=age_seconds))
+
+
+@pytest.mark.unit
+def test_a_cached_bar_without_a_close_is_refetched_past_the_ttl(tmp_path, monkeypatch):
+    _write_unsettled(tmp_path, age_seconds=STALE)
+    calls = []
+
+    def _filled(*a, **k):
+        calls.append(1)
+        return pd.DataFrame(
+            {"Date": pd.to_datetime(["2026-07-16", "2026-07-17"]), "Close": [100.0, 105.0]}
+        ).set_index("Date")
+
+    out = _load(tmp_path, monkeypatch, "2026-07-17", _filled)
+    assert calls and out["Close"].iloc[-1] == 105.0
+
+
+@pytest.mark.unit
+def test_a_bar_without_a_close_inside_the_ttl_is_not_refetched(tmp_path, monkeypatch):
+    _write_unsettled(tmp_path, age_seconds=60)
+    out = _load(tmp_path, monkeypatch, "2026-07-17", _fail_download)
+    assert out["Close"].iloc[-1] == 100.0  # falls back to the settled bar, as before

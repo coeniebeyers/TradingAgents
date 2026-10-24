@@ -158,6 +158,22 @@ def _cache_is_fresh(data_file, as_of_dt, now) -> bool:
     return as_of_dt.date() < now.date() or (now - written).total_seconds() <= OHLCV_CACHE_TTL_SECONDS
 
 
+def _unsettled_tail_is_stale(cached: pd.DataFrame, data_file, as_of_dt, now) -> bool:
+    """Whether the cache's newest bar for this request has no close and the TTL has passed.
+
+    Yahoo can publish a session's bar before its close (JSE bars often appear
+    with volume but empty prices for hours). Cached like that, a later request
+    for a past date was served the day before's close all day, though Yahoo had
+    since filled the bar in.
+    """
+    written = pd.Timestamp.fromtimestamp(os.path.getmtime(data_file))
+    if (now - written).total_seconds() <= OHLCV_CACHE_TTL_SECONDS:
+        return False
+    rows = _clean_dataframe(cached.copy())
+    rows = rows[rows["Date"] <= as_of_dt]
+    return not rows.empty and pd.isna(rows["Close"].iloc[-1])
+
+
 def load_ohlcv(symbol: str, as_of_date: str, fill_gaps: bool = True) -> pd.DataFrame:
     """Fetch OHLCV data with caching, filtered to prevent look-ahead bias.
 
@@ -203,6 +219,7 @@ def load_ohlcv(symbol: str, as_of_date: str, fill_gaps: bool = True) -> pd.DataF
             not cached.empty
             and "Close" in cached.columns
             and _cache_is_fresh(data_file, as_of_dt, now)
+            and not _unsettled_tail_is_stale(cached, data_file, as_of_dt, now)
         ):
             data = cached
 
