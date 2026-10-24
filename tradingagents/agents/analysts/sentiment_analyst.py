@@ -37,7 +37,12 @@ from tradingagents.dataflows.vendors.reddit import (
     fetch_reddit_posts,
     subreddits_for,
 )
+from tradingagents.dataflows.config import get_config
 from tradingagents.dataflows.vendors.stocktwits import fetch_stocktwits_messages
+
+REDDIT_OFF = (
+    "<Reddit unavailable: not configured for this deployment; this is not an absence of discussion>"
+)
 
 
 def _seven_days_back(trade_date: str) -> str:
@@ -71,9 +76,12 @@ def create_sentiment_analyst(llm):
             ticker, limit=30, start_date=start_date, end_date=end_date, screen=screen
         )
         subreddits = subreddits_for(ticker)
-        reddit_block = fetch_reddit_posts(
-            ticker, subreddits, start_date=start_date, end_date=end_date, screen=screen
-        )
+        if get_config().get("reddit_enabled", True):
+            reddit_block = fetch_reddit_posts(
+                ticker, subreddits, start_date=start_date, end_date=end_date, screen=screen
+            )
+        else:
+            reddit_block = REDDIT_OFF
 
         system_message = _build_system_message(
             ticker=ticker,

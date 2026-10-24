@@ -68,3 +68,17 @@ def test_reddit_feeds_are_shared_per_ticker(monkeypatch):
     reddit._shared_feed("googl", "stocks", 25, 5)
     reddit._shared_feed("META", "stocks", 25, 5)
     assert calls == ["GOOGL", "META"]
+
+
+@pytest.mark.unit
+def test_prune_drops_entries_nobody_refreshed_and_keeps_the_rest():
+    import os
+
+    shared_cache.cached("ns", ["old"], 60, lambda: "old")
+    shared_cache.cached("ns", ["new"], 60, lambda: "new")
+    old = shared_cache._key_file("ns", ["old"])
+    week_ago = time.time() - 8 * 86400
+    os.utime(old, (week_ago, week_ago))
+    assert shared_cache.prune(max_age_days=7) == 1
+    assert not os.path.exists(old)
+    assert os.path.exists(shared_cache._key_file("ns", ["new"]))

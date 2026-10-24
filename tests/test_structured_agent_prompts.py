@@ -166,3 +166,22 @@ def test_the_sentiment_prompt_names_the_subreddits_searched(monkeypatch):
     text = _prompt_text(captured["prompt"])
     assert "r/Bitcoin, r/CryptoCurrency, r/CryptoMarkets" in text
     assert "wallstreetbets" not in text
+
+
+@pytest.mark.unit
+def test_reddit_switched_off_is_not_fetched_and_the_prompt_says_so(monkeypatch):
+    from tradingagents.agents.schemas import SentimentBand, SentimentReport
+
+    monkeypatch.setattr(sentiment, "fetch_stocktwits_messages", lambda *a, **k: "st")
+    monkeypatch.setattr(sentiment, "fetch_reddit_posts", lambda *a, **k: pytest.fail("Reddit was fetched"))
+    monkeypatch.setattr(sentiment.get_news, "func", lambda *a, **k: "news", raising=False)
+    monkeypatch.setattr(sentiment, "get_config", lambda: {"reddit_enabled": False})
+    captured = {}
+    llm = _capturing_llm(captured, SentimentReport(
+        overall_band=SentimentBand.NEUTRAL, overall_score=5.0, confidence="low", narrative="n",
+    ))
+    sentiment.create_sentiment_analyst(llm)({
+        "company_of_interest": "NVDA", "trade_date": "2026-01-15",
+        "asset_type": "stock", "messages": [],
+    })
+    assert "not configured for this deployment" in _prompt_text(captured["prompt"])

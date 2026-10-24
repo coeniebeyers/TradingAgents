@@ -72,6 +72,33 @@ def cached(namespace: str, key: Any, ttl: float, fetch: Callable[[], Any],
         return value
 
 
+def prune(max_age_days: float = 7) -> int:
+    """Delete entries nobody has refreshed in ``max_age_days``; returns how many went.
+
+    Keys carry their dates, so an old entry is never asked for again; without
+    this the cache only grows.
+    """
+    root = _root()
+    cutoff = time.time() - max_age_days * 86400
+    removed = 0
+    for dirpath, _dirs, names in os.walk(root):
+        if os.path.basename(dirpath) == "pace":
+            continue
+        for name in names:
+            path = os.path.join(dirpath, name)
+            if not name.endswith(".json"):
+                continue
+            try:
+                if os.path.getmtime(path) < cutoff:
+                    os.remove(path)
+                    removed += 1
+                    if os.path.exists(path + ".lock"):
+                        os.remove(path + ".lock")
+            except OSError:
+                pass
+    return removed
+
+
 @contextmanager
 def paced(host: str, interval: float):
     """Wait until ``interval`` seconds have passed since the last request to ``host`` by any process."""
