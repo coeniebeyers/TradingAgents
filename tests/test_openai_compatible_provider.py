@@ -96,3 +96,21 @@ def test_structured_output_suppresses_object_tool_choice(monkeypatch):
     assert out == "BOUND"
     assert captured["method"] == "function_calling"
     assert captured["tool_choice"] is None  # not the object form
+
+
+@pytest.mark.unit
+def test_a_deployment_can_have_the_server_constrain_structured_answers(monkeypatch):
+    """vLLM's thinking models leave an unforced schema tool uncalled; json_schema
+    makes the server hold the answer to the schema instead."""
+    from pydantic import BaseModel
+
+    class Answer(BaseModel):
+        rating: str
+
+    llm = create_llm_client(provider="openai_compatible", model="m", base_url="http://localhost:8000/v1").get_llm()
+    default = llm.with_structured_output(Answer)
+    assert "tools" in default.first.kwargs  # unchanged: the schema rides as an unforced tool
+    monkeypatch.setenv("TRADINGAGENTS_STRUCTURED_METHOD", "json_schema")
+    constrained = llm.with_structured_output(Answer).first.kwargs
+    assert constrained["response_format"] is Answer and "tools" not in constrained
+    assert constrained["ls_structured_output_format"]["kwargs"]["method"] == "json_schema"

@@ -63,9 +63,16 @@ class LocalCompatibleChatOpenAI(NormalizedChatOpenAI):
     ``tool_choice`` langchain sends for function-calling structured output. Bind
     the schema as a tool but don't force tool_choice, so structured output works
     across local servers regardless of the model ID's capabilities (#1057).
+
+    A thinking model behind an unforced tool often answers in prose, so the
+    structured call comes back empty and falls back to free text (seen in most
+    Research and Portfolio Manager calls on vLLM with Qwen).
+    ``TRADINGAGENTS_STRUCTURED_METHOD=json_schema`` has the server constrain
+    the answer to the schema instead, for servers that support it.
     """
 
     def with_structured_output(self, schema, *, method=None, **kwargs):
+        method = method or os.environ.get("TRADINGAGENTS_STRUCTURED_METHOD") or None
         resolved = method or get_capabilities(self.model_name).preferred_structured_method
         if resolved == "function_calling":
             kwargs.setdefault("tool_choice", None)
