@@ -53,6 +53,21 @@ def test_a_rating_word_without_a_label_is_not_read_as_the_call(prose):
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize("opening", ["Sell", "**Underweight**", "  Hold.", "__overweight__"])
+def test_a_rating_alone_on_the_opening_line_is_the_call(opening):
+    """Free-text decisions often open with the bare rating, as the prompt asks; that
+    was read as REVIEW even when the summary below repeated it."""
+    text = f"\n\n{opening}\n\n**Executive Summary**: Avoid a Buy here; the case for Overweight is weak."
+    assert extract_rating(text) == opening.strip(" *_.").capitalize()
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("opening", ["Not a Sell", "Sell?", "Selling pressure eased"])
+def test_an_opening_line_with_more_than_the_rating_is_not_read_as_bare(opening):
+    assert extract_rating(f"{opening}\n\nThe committee was split between Buy and Sell.") is None
+
+
+@pytest.mark.unit
 def test_a_refusal_has_no_rating_and_is_not_defaulted():
     assert extract_rating(REFUSAL) is None
     assert parse_rating(REFUSAL) == RATING_REVIEW

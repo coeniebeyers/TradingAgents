@@ -49,6 +49,10 @@ _RATING_LINE_RE = re.compile(
     re.IGNORECASE,
 )
 
+# An opening line that is the rating alone ("Sell", "**Underweight**"), which is how
+# a free-text decision often answers "starting with the rating on its own line".
+_BARE_RATING_RE = re.compile(r"[\s*_]*([A-Za-z]+)[\s*_.]*")
+
 # A line presenting the scale rather than a decision ("Rating Scale: Buy, ...").
 _RATING_SCALE_RE = re.compile(r"rating\s*(scale|options|legend)", re.IGNORECASE)
 
@@ -65,7 +69,7 @@ def extract_rating(text: str) -> str | None:
     norm = unicodedata.normalize("NFKC", text)
 
     # The decision is asked to open with its rating, so a first line (after any
-    # headings) in that shape is the call. A list item there may also be a quote
+    # headings) in that shape, or holding the rating alone, is the call. A list item there may also be a quote
     # heading a list of other parties' ratings, so it counts with the decision's
     # other rating lines, which leave out list items; failing those, every label
     # counts. Either way they must agree: ratings that differ, with nothing
@@ -74,6 +78,9 @@ def extract_rating(text: str) -> str | None:
     lines = [line for line in norm.splitlines() if line.strip() and not _RATING_SCALE_RE.search(line)]
     first = next((line for line in lines if not line.lstrip().startswith("#")
                   or _RATING_LINE_RE.match(line)), "")
+    bare = _BARE_RATING_RE.fullmatch(first)
+    if bare and bare.group(1).lower() in _RATING_SET:
+        return bare.group(1).capitalize()
     m = _RATING_LINE_RE.match(first)
     opening = m if m and m.group("value").lower() in _RATING_SET else None
     if opening and not opening.group("item"):
