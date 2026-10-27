@@ -35,6 +35,8 @@ logger = logging.getLogger(__name__)
 
 _TICKERS_URL = "https://www.sec.gov/files/company_tickers.json"
 _FACTS_URL = "https://data.sec.gov/api/xbrl/companyfacts/CIK{cik}.json"
+_SUBMISSIONS_URL = "https://data.sec.gov/submissions/CIK{cik}.json"
+_PERIODIC_FORMS = ("10-Q", "10-K", "20-F", "40-F")
 
 # A filing history only changes when something new is filed, so one fetch per
 # company per day serves every date a run asks about.
@@ -211,6 +213,31 @@ def _year_on_year(values: dict, end: str, index: int) -> str:
     return f"{(now - before) / before * 100:+.1f}%"
 
 
+def _missing_filing(cik: str, us_gaap: dict, as_of_date: str) -> str:
+    """A note naming the newest periodic report SEC lists but has not put into its facts, or "".
+
+    SEC builds company facts from each filing's XBRL, sometimes months late: Abbott's
+    10-Q filed 2026-07-28 was still absent in October, so its table ended at Q1 while
+    the news discussed Q3. Without the note a reader takes the last column as current.
+    """
+    try:
+        recent = _cached_json(_SUBMISSIONS_URL.format(cik=cik), f"submissions_CIK{cik}.json")["filings"]["recent"]
+        filings = [(filed, form, period) for form, filed, period
+                   in zip(recent["form"], recent["filingDate"], recent["reportDate"])
+                   if form.startswith(_PERIODIC_FORMS) and filed <= as_of_date]
+    except (VendorUnavailableError, KeyError, TypeError):
+        return ""  # the statement stands on its own; the check is a courtesy
+    if not filings:
+        return ""
+    filed, form, period = max(filings)
+    newest_fact = max((fact["filed"] for tag in us_gaap.values() for unit in tag.get("units", {}).values()
+                       for fact in unit if fact["filed"] <= as_of_date), default="")
+    if filed <= newest_fact:
+        return ""
+    return (f"# Missing: the {form} for the period ended {period}, filed {filed}, is not yet in SEC's"
+            f" structured data, so this table stops before it\n")
+
+
 def _statement(kind: str, ticker: str, freq: str, as_of_date: str, title: str) -> str:
     as_of_date = as_of_date or datetime.now().strftime("%Y-%m-%d")
     cik = cik_for(ticker)
@@ -246,7 +273,8 @@ def _statement(kind: str, ticker: str, freq: str, as_of_date: str, title: str) -
     header = (
         f"# {title} for {ticker.upper()} ({freq}), USD in millions unless the row says otherwise\n"
         f"# SEC EDGAR facts filed on or before {as_of_date}, at the values filed then; the latest {len(recent)}"
-        f" periods, oldest first, each line followed by its change on the same span a year earlier\n\n"
+        f" periods, oldest first, each line followed by its change on the same span a year earlier\n"
+        f"{_missing_filing(cik, us_gaap, as_of_date)}\n"
     )
     rows = [",".join([""] + [end + names[index] for end, index in periods])]
     for label, (values, unit) in lines.items():

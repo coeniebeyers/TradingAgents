@@ -365,3 +365,32 @@ def test_each_line_states_its_change_on_a_year_earlier(monkeypatch):
     assert change[0] == ""             # nothing filed a year before 2024-12-31
     table = [r for r in out.splitlines() if r and not r.startswith("#")]
     assert len({row.count(",") for row in table}) == 1
+
+
+def _with_submissions(monkeypatch, filings):
+    """Serve the fixture facts plus a filing list of (form, filed, period)."""
+    submissions = {"filings": {"recent": {"form": [f for f, _, _ in filings], "filingDate": [d for _, d, _ in filings],
+                                          "reportDate": [p for _, _, p in filings]}}}
+    monkeypatch.setattr(sec_edgar, "_fetch_json", lambda url: TICKER_MAP if "company_tickers" in url
+                        else submissions if "submissions" in url else FACTS)
+
+
+@pytest.mark.unit
+def test_a_report_sec_has_not_yet_put_into_its_facts_is_named(monkeypatch):
+    """Abbott's 10-Q filed in July was still missing from SEC's facts in October, so its
+    table ended at Q1 while the news discussed Q3."""
+    _with_submissions(monkeypatch, [("8-K", "2026-04-20", "2026-04-20"), ("10-Q", "2026-04-15", "2026-03-31")])
+
+    out = sec_edgar.get_income_statement("AAPL", "quarterly", "2026-06-01")
+
+    assert "Missing: the 10-Q for the period ended 2026-03-31, filed 2026-04-15" in out
+
+
+@pytest.mark.unit
+def test_no_report_is_named_missing_when_the_facts_hold_it_or_it_came_later(monkeypatch):
+    # The newest fact in the fixture was filed 2026-01-29, the same day as this 10-Q.
+    _with_submissions(monkeypatch, [("10-Q", "2026-01-29", "2025-12-31"), ("10-Q", "2026-07-30", "2026-06-30")])
+
+    out = sec_edgar.get_income_statement("AAPL", "quarterly", "2026-06-01")
+
+    assert "Missing" not in out
