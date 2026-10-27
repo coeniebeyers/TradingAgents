@@ -88,6 +88,15 @@ _YEAR_TO_DATE = ((150, 200, 6), (240, 290, 9))
 # filing of any form: a recast after a split or spin-off counts from its filing.
 _ANNUAL_FORMS = ("10-K", "20-F", "40-F")
 
+# A table carries only its latest periods: given every quarter since 2011, a
+# model compared the newest EPS with a quarter two columns back and reported a
+# 265% rise as a 69% fall. Changes still look back into the full history.
+_RECENT = {"quarterly": 8, "annual": 5}
+
+# A year earlier is the same span ending 365 days before, give or take a
+# 52/53-week fiscal calendar's drift.
+_YEAR_SLACK_DAYS = 20
+
 
 def _user_agent() -> str:
     """Who SEC sees. No account or key exists; callers identify themselves.
@@ -187,6 +196,21 @@ def _as_of(facts: dict, tags: tuple[str, ...], as_of_date: str, spans: tuple[tup
     return dict(sorted(values.items())), chosen_unit
 
 
+def _year_on_year(values: dict, end: str, index: int) -> str:
+    """The change on the same span a year before, as a signed percentage, or "" when it can't be stated.
+
+    A base at or below zero has no meaningful percentage change, so it is left blank
+    rather than printed with a sign that reads backwards.
+    """
+    now = values.get((end, index))
+    target = date.fromisoformat(end).toordinal() - 365
+    before = next((v for (e, i), v in values.items()
+                   if i == index and abs(date.fromisoformat(e).toordinal() - target) <= _YEAR_SLACK_DAYS), None)
+    if now is None or before is None or before <= 0:
+        return ""
+    return f"{(now - before) / before * 100:+.1f}%"
+
+
 def _statement(kind: str, ticker: str, freq: str, as_of_date: str, title: str) -> str:
     as_of_date = as_of_date or datetime.now().strftime("%Y-%m-%d")
     cik = cik_for(ticker)
@@ -216,10 +240,13 @@ def _statement(kind: str, ticker: str, freq: str, as_of_date: str, title: str) -
     periods = sorted({(end, index) for spans_of in chosen.values() for end, index in spans_of.items()})
     if not periods:
         raise NoMarketDataError(ticker, ticker, f"no {freq} {title.lower()} filed by {as_of_date}")
+    recent = sorted({end for end, _ in periods})[-_RECENT["quarterly" if quarterly else "annual"]:]
+    periods = [(end, index) for end, index in periods if end >= recent[0]]
 
     header = (
         f"# {title} for {ticker.upper()} ({freq}), USD in millions unless the row says otherwise\n"
-        f"# SEC EDGAR facts filed on or before {as_of_date}, at the values filed then\n\n"
+        f"# SEC EDGAR facts filed on or before {as_of_date}, at the values filed then; the latest {len(recent)}"
+        f" periods, oldest first, each line followed by its change on the same span a year earlier\n\n"
     )
     rows = [",".join([""] + [end + names[index] for end, index in periods])]
     for label, (values, unit) in lines.items():
@@ -234,6 +261,8 @@ def _statement(kind: str, ticker: str, freq: str, as_of_date: str, title: str) -
             value = values.get((end, index)) if chosen[label].get(end) == index else None
             cells.append("" if value is None else f"{value / 1e6:.0f}" if unit == "USD" else f"{value:.2f}")
         rows.append(",".join([name] + cells))
+        rows.append(",".join([f"YoY change in {label}"] + [
+            _year_on_year(values, end, index) if chosen[label].get(end) == index else "" for end, index in periods]))
     return header + "\n".join(rows) + "\n"
 
 

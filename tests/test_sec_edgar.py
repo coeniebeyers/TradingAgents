@@ -321,3 +321,47 @@ def test_a_row_filed_only_year_to_date_keeps_its_figure_beside_a_row_filed_by_qu
     rows = {r.split(",")[0]: r.split(",")[1:] for r in out.splitlines()[3:]}
     assert rows["Operating Cash Flow"] == ["", "120"]
     assert rows["Capital Expenditure"] == ["10", ""]
+
+
+def _quarters(values, tag="EarningsPerShareDiluted", unit="USD/shares"):
+    """Discrete quarters ending on consecutive calendar quarter ends from 2024-03-31, each filed a month later."""
+    ends = ["2024-03-31", "2024-06-30", "2024-09-30", "2024-12-31", "2025-03-31", "2025-06-30",
+            "2025-09-30", "2025-12-31", "2026-03-31", "2026-06-30", "2026-09-30"]
+    starts = ["2024-01-01", "2024-04-01", "2024-07-01", "2024-10-01", "2025-01-01", "2025-04-01",
+              "2025-07-01", "2025-10-01", "2026-01-01", "2026-04-01", "2026-07-01"]
+    facts = [_fact(e, v, e[:5] + f"{int(e[5:7]) % 12 + 1:02d}-28" if e[5:7] != "12" else f"{int(e[:4]) + 1}-01-28",
+                   form="10-Q", fp="Q", start=s) for e, s, v in zip(ends, starts, values)]
+    return {"facts": {"us-gaap": {tag: {"units": {unit: facts}}}}}
+
+
+@pytest.mark.unit
+def test_a_table_carries_only_its_latest_periods(monkeypatch):
+    """Every quarter since listing made the table wide enough for a model to compare the
+    wrong columns; the latest eight are what a run reads."""
+    facts = _quarters([1.0 + i for i in range(11)])
+    monkeypatch.setattr(sec_edgar, "_fetch_json", lambda url: TICKER_MAP if "company_tickers" in url else facts)
+
+    out = sec_edgar.get_income_statement("AAPL", "quarterly", "2026-12-31")
+
+    assert _columns(out) == ["2024-12-31", "2025-03-31", "2025-06-30", "2025-09-30", "2025-12-31",
+                             "2026-03-31", "2026-06-30", "2026-09-30"]
+
+
+@pytest.mark.unit
+def test_each_line_states_its_change_on_a_year_earlier(monkeypatch):
+    """META's Q3 2026 EPS of 3.83 against 1.05 a year before is +265%, which a model
+    reading the raw table reported as a 69% fall."""
+    eps = [1.0, 1.0, 1.0, -0.5, 1.2, -1.0, 1.05, 1.0, 1.0, 1.0, 3.83]
+    facts = _quarters(eps)
+    monkeypatch.setattr(sec_edgar, "_fetch_json", lambda url: TICKER_MAP if "company_tickers" in url else facts)
+
+    out = sec_edgar.get_income_statement("AAPL", "quarterly", "2026-12-31")
+    change = [r for r in out.splitlines() if r.startswith("YoY change in Diluted EPS")][0].split(",")[1:]
+
+    assert change[-1] == "+264.8%"     # 2026-09-30 against 2025-09-30
+    assert change[1] == "+20.0%"       # 2025-03-31 against a quarter older than the table shows
+    assert change[2] == "-200.0%"      # a fall into a loss still reads as a fall
+    assert change[4] == ""             # 2025-12-31 against a loss: no percentage reads the right way
+    assert change[0] == ""             # nothing filed a year before 2024-12-31
+    table = [r for r in out.splitlines() if r and not r.startswith("#")]
+    assert len({row.count(",") for row in table}) == 1
