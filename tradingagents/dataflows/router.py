@@ -208,7 +208,17 @@ _NOT_KEPT = ("DATA_UNAVAILABLE", "NO_DATA_AVAILABLE")
 
 
 def route_to_vendor(method: str, *args, **kwargs):
-    """Route method calls to appropriate vendor implementation with fallback support."""
+    """Route method calls to appropriate vendor implementation with fallback support.
+
+    A run handed a data snapshot (see ``snapshot.py``) is answered from it first.
+    """
+    from tradingagents.dataflows import snapshot
+
+    snap = snapshot.active()
+    if snap is not None:
+        stored = snap.answer(method, args, kwargs)
+        if stored is not None:
+            return stored
     if method in SHARED_METHODS:
         from tradingagents.dataflows.shared_cache import cached
 

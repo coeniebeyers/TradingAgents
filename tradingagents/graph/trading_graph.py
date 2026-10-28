@@ -191,6 +191,9 @@ class TradingAgentsGraph:
 
         with run_config(self.config), \
                 self.checkpoint_scope(company_name, trade_date, asset_type, portfolio, fact_sheet) as thread_id_value:
+            from tradingagents.dataflows import snapshot
+
+            snapshot.check_date(trade_date)
             return self._run_graph(
                 company_name, trade_date, asset_type=asset_type,
                 checkpoint_thread_id=thread_id_value, portfolio=portfolio, fact_sheet=fact_sheet,

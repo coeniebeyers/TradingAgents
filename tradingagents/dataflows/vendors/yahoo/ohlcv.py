@@ -213,7 +213,14 @@ def load_ohlcv(symbol: str, as_of_date: str, fill_gaps: bool = True) -> pd.DataF
     # transient rate limit). Treat an empty/columnless cache as a miss and
     # re-fetch rather than serving the poisoned file forever.
     data = None
-    if os.path.exists(data_file):
+    # A run handed a data snapshot reads the price file as collected, never a refresh of it.
+    from tradingagents.dataflows import snapshot
+
+    snap = snapshot.active()
+    frozen = snap.price_file(safe_symbol) if snap is not None else None
+    if frozen:
+        data = pd.read_csv(frozen, on_bad_lines="skip", encoding="utf-8")
+    elif os.path.exists(data_file):
         cached = pd.read_csv(data_file, on_bad_lines="skip", encoding="utf-8")
         if (
             not cached.empty

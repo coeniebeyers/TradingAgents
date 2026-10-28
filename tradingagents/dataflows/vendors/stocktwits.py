@@ -94,6 +94,12 @@ def fetch_stocktwits_messages(
     symbol has no messages, or the response shape is unexpected — the
     caller never has to special-case None or exceptions.
     """
+    from tradingagents.dataflows import snapshot
+
+    snap = snapshot.active()
+    stored = snap.stocktwits(ticker) if snap is not None else None
+    if stored is not None:
+        return stored
     url = _API.format(ticker=_stocktwits_symbol(ticker))
     req = Request(url, headers={"User-Agent": _UA, "Accept": "application/json"})
     try:
