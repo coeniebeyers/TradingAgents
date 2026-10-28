@@ -217,6 +217,10 @@ class TestCheckpointSignature(unittest.TestCase):
             self.assertEqual(base, g._run_signature("stock"), key)
         g.config = dict(base_config)
         self.assertEqual(base, g._run_signature("stock"))
+        # A fact sheet is an input: a different one is a different run, and none keeps the old signature.
+        self.assertEqual(base, g._run_signature("stock", None, ""))
+        self.assertNotEqual(base, g._run_signature("stock", None, "EPS +264.8%"))
+        self.assertNotEqual(g._run_signature("stock", None, "EPS +264.8%"), g._run_signature("stock", None, "EPS -69%"))
 
     def test_run_signature_captures_graph_shape(self):
         from tradingagents.graph.trading_graph import TradingAgentsGraph

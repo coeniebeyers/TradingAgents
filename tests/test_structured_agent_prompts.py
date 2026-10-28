@@ -185,3 +185,30 @@ def test_reddit_switched_off_is_not_fetched_and_the_prompt_says_so(monkeypatch):
         "asset_type": "stock", "messages": [],
     })
     assert "not configured for this deployment" in _prompt_text(captured["prompt"])
+
+
+def _research_prompt(fact_sheet=None):
+    from tradingagents.agents.schemas import PortfolioRating, ResearchPlan
+
+    captured = {}
+    llm = _capturing_llm(captured, ResearchPlan(
+        recommendation=PortfolioRating.HOLD, rationale="x", strategic_actions="y"))
+    state = {"company_of_interest": "META", "investment_debate_state": {
+        "history": "Bear: Q3 EPS fell 69% YoY.", "bull_history": "", "bear_history": "", "current_response": "", "count": 1}}
+    if fact_sheet is not None:
+        state["fact_sheet"] = fact_sheet
+    create_research_manager(llm)(state)
+    return _prompt_text(captured["prompt"])
+
+
+@pytest.mark.unit
+def test_research_manager_weighs_the_debate_against_a_fact_sheet_when_given_one():
+    """META's debaters repeated a misread table ("EPS down 69%"); the filings show +265%."""
+    text = _research_prompt("- Diluted EPS 3.83; vs 1.05 a year earlier (+264.8% year on year)")
+    assert "where the debate disagrees with it, the fact sheet is right" in text
+    assert text.index("+264.8% year on year") < text.index("**Debate History:**")
+
+
+@pytest.mark.unit
+def test_research_manager_prompt_is_unchanged_without_a_fact_sheet():
+    assert _research_prompt() == _research_prompt("") and "Fact sheet" not in _research_prompt()

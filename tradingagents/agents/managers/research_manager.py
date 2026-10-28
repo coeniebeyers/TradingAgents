@@ -17,6 +17,16 @@ def create_research_manager(llm):
     def research_manager_node(state) -> dict:
         instrument_context = get_instrument_context_from_state(state)
         history = state["investment_debate_state"].get("history", "")
+        fact_sheet = (state.get("fact_sheet") or "").strip()
+        # Debaters repeat an analyst's misread table (a 69% EPS fall the filings show as +265%), and this step sees
+        # only the debate, so figures computed by code from the same data are put beside it when the caller has them.
+        facts = (f"""**Fact sheet** (computed by code from the data the analysts retrieved; where the debate disagrees with it, the fact sheet is right):
+
+{fact_sheet}
+
+---
+
+""" if fact_sheet else "")
 
         investment_debate_state = state["investment_debate_state"]
 
@@ -37,7 +47,7 @@ The debate always contains conflicting arguments; deciding which side is stronge
 
 ---
 
-**Debate History:**
+{facts}**Debate History:**
 {history}
 
 ## Output
