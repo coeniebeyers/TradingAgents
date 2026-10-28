@@ -113,7 +113,7 @@ def test_the_report_states_the_vintage_rule():
 def test_a_filer_with_no_usable_facts_reads_differently_from_a_non_filer(monkeypatch):
     monkeypatch.setattr(sec_edgar, "_fetch_json",
                         lambda url: TICKER_MAP if "company_tickers" in url else {"facts": {}})
-    with pytest.raises(NoMarketDataError, match="no us-gaap facts"):
+    with pytest.raises(NoMarketDataError, match="no us-gaap or ifrs-full facts"):
         sec_edgar.get_balance_sheet("AAPL", "annual", "2026-01-01")
 
 
@@ -394,3 +394,44 @@ def test_no_report_is_named_missing_when_the_facts_hold_it_or_it_came_later(monk
     out = sec_edgar.get_income_statement("AAPL", "quarterly", "2026-06-01")
 
     assert "Missing" not in out
+
+
+def _ifrs_filer(monkeypatch, unit="USD", filings=()):
+    """A 20-F filer: one stale us-gaap fact from before it moved to IFRS, its statements under ifrs-full."""
+    facts = {"facts": {
+        "us-gaap": {"Revenues": {"units": {"USD": [_fact("2020-12-31", 1_000_000, "2021-03-01", form="20-F")]}}},
+        "ifrs-full": {
+            "Revenue": {"units": {unit: [
+                _fact("2024-12-31", 2_797_000_000, "2025-03-01", form="20-F", start="2024-01-01"),
+                _fact("2025-12-31", 3_412_000_000, "2026-03-06", form="20-F", start="2025-01-01")]}},
+            "DilutedEarningsLossPerShare": {"units": {f"{unit}/shares": [
+                _fact("2025-12-31", 0.07, "2026-03-06", form="20-F", start="2025-01-01")]}},
+        }}}
+    submissions = {"filings": {"recent": {"form": [f for f, _, _ in filings], "filingDate": [d for _, d, _ in filings],
+                                          "reportDate": [p for _, _, p in filings]}}}
+    monkeypatch.setattr(sec_edgar, "_fetch_json", lambda url: TICKER_MAP if "company_tickers" in url
+                        else submissions if "submissions" in url else facts)
+
+
+@pytest.mark.unit
+def test_a_filer_reporting_under_ifrs_gets_its_ifrs_statements(monkeypatch):
+    """Grab's 20-Fs are IFRS: reading only us-gaap served one stale 2020 figure."""
+    _ifrs_filer(monkeypatch, filings=[("20-F", "2026-03-06", "2025-12-31")])
+
+    out = sec_edgar.get_income_statement("AAPL", "annual", "2026-10-28")
+
+    assert _columns(out) == ["2024-12-31", "2025-12-31"]
+    assert "Revenue,2797,3412" in out and "YoY change in Revenue,,+22.0%" in out
+    assert "Diluted EPS (USD/shares),,0.07" in out
+    assert "Missing" not in out  # the 20-F is in the facts, under IFRS
+
+
+@pytest.mark.unit
+def test_a_statement_in_another_currency_says_so(monkeypatch):
+    """TSMC reports in New Taiwan dollars: printing them as USD would overstate it thirty-fold."""
+    _ifrs_filer(monkeypatch, unit="TWD")
+
+    out = sec_edgar.get_income_statement("AAPL", "annual", "2026-10-28")
+
+    assert out.startswith("# Income Statement for AAPL (annual), TWD in millions")
+    assert "Revenue,2797,3412" in out and "Diluted EPS (TWD/shares),,0.07" in out

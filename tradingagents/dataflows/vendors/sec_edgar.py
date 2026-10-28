@@ -74,6 +74,34 @@ _STATEMENTS: dict[str, list[tuple[str, tuple[str, ...]]]] = {
     ],
 }
 
+# The same line items for a filer that reports under IFRS (most foreign 20-F filers: Grab, TSMC, ASML), whose
+# facts sit under ifrs-full rather than us-gaap, often in its home currency.
+_IFRS_STATEMENTS: dict[str, list[tuple[str, tuple[str, ...]]]] = {
+    "balance_sheet": [
+        ("Total Assets", ("Assets",)),
+        ("Current Assets", ("CurrentAssets",)),
+        ("Cash and Equivalents", ("CashAndCashEquivalents",)),
+        ("Total Liabilities", ("Liabilities",)),
+        ("Current Liabilities", ("CurrentLiabilities",)),
+        ("Stockholders Equity", ("EquityAttributableToOwnersOfParent", "Equity")),
+    ],
+    "income_statement": [
+        ("Revenue", ("Revenue", "RevenueFromContractsWithCustomers")),
+        ("Cost of Revenue", ("CostOfSales",)),
+        ("Gross Profit", ("GrossProfit",)),
+        ("Operating Income", ("ProfitLossFromOperatingActivities",)),
+        ("Net Income", ("ProfitLossAttributableToOwnersOfParent", "ProfitLoss")),
+        ("Diluted EPS", ("DilutedEarningsLossPerShare",)),
+    ],
+    "cashflow": [
+        ("Operating Cash Flow", ("CashFlowsFromUsedInOperatingActivities",)),
+        ("Investing Cash Flow", ("CashFlowsFromUsedInInvestingActivities",)),
+        ("Financing Cash Flow", ("CashFlowsFromUsedInFinancingActivities",)),
+        ("Capital Expenditure", ("PurchaseOfPropertyPlantAndEquipmentClassifiedAsInvestingActivities",
+                                 "PurchaseOfPropertyPlantAndEquipment")),
+    ],
+}
+
 # A statement's figures cover a span: a quarter is about 90 days, a year about
 # 365. One filing reports both the quarter and the year to date under the same
 # end date, so a match on the end date alone can report half a year as a quarter.
@@ -213,6 +241,29 @@ def _year_on_year(values: dict, end: str, index: int) -> str:
     return f"{(now - before) / before * 100:+.1f}%"
 
 
+def _newest_filed(taxonomy: dict, as_of_date: str) -> str:
+    return max((fact["filed"] for tag in taxonomy.values() for unit in tag.get("units", {}).values()
+                for fact in unit if fact["filed"] <= as_of_date), default="")
+
+
+def _taxonomy(facts: dict, as_of_date: str) -> tuple[dict, dict] | None:
+    """(facts, line items) for the taxonomy the filer reported in most recently by the date: us-gaap or ifrs-full.
+
+    A filer that moved from one to the other keeps its old facts, so the newer one wins (Grab's last us-gaap fact
+    was filed in 2024; its 20-Fs since are IFRS).
+    """
+    found = [(_newest_filed(facts[ns], as_of_date), ns) for ns in ("us-gaap", "ifrs-full") if facts.get(ns)]
+    found = [(filed, ns) for filed, ns in found if filed]
+    if not found:
+        return None
+    _, ns = max(found)
+    return facts[ns], (_STATEMENTS if ns == "us-gaap" else _IFRS_STATEMENTS)
+
+
+def _is_currency(unit: str) -> bool:
+    return len(unit) == 3 and unit.isalpha() and unit.isupper()
+
+
 def _missing_filing(cik: str, us_gaap: dict, as_of_date: str) -> str:
     """A note naming the newest periodic report SEC lists but has not put into its facts, or "".
 
@@ -230,8 +281,7 @@ def _missing_filing(cik: str, us_gaap: dict, as_of_date: str) -> str:
     if not filings:
         return ""
     filed, form, period = max(filings)
-    newest_fact = max((fact["filed"] for tag in us_gaap.values() for unit in tag.get("units", {}).values()
-                       for fact in unit if fact["filed"] <= as_of_date), default="")
+    newest_fact = _newest_filed(us_gaap, as_of_date)
     if filed <= newest_fact:
         return ""
     return (f"# Missing: the {form} for the period ended {period}, filed {filed}, is not yet in SEC's"
@@ -245,9 +295,10 @@ def _statement(kind: str, ticker: str, freq: str, as_of_date: str, title: str) -
         raise NoMarketDataError(ticker, ticker, "not a US SEC filer")
 
     facts = _cached_json(_FACTS_URL.format(cik=cik), f"CIK{cik}.json")
-    us_gaap = (facts.get("facts") or {}).get("us-gaap")
-    if not us_gaap:
-        raise NoMarketDataError(ticker, ticker, "US filer with no us-gaap facts")
+    chosen = _taxonomy(facts.get("facts") or {}, as_of_date)
+    if chosen is None:
+        raise NoMarketDataError(ticker, ticker, "US filer with no us-gaap or ifrs-full facts")
+    us_gaap, items = chosen
 
     quarterly = freq.lower() == "quarterly"
     if quarterly:
@@ -256,7 +307,7 @@ def _statement(kind: str, ticker: str, freq: str, as_of_date: str, title: str) -
     else:
         spans, names = (_SPANS["annual"],), [""]
     forms = () if quarterly else _ANNUAL_FORMS
-    lines = {label: _as_of(us_gaap, tags, as_of_date, spans, forms) for label, tags in _STATEMENTS[kind]}
+    lines = {label: _as_of(us_gaap, tags, as_of_date, spans, forms) for label, tags in items[kind]}
     # Each row takes the shortest span it reports for a period, and a column
     # holds one span of one period, so a row filed only to date keeps its figure
     # beside a row filed by quarter.
@@ -270,8 +321,11 @@ def _statement(kind: str, ticker: str, freq: str, as_of_date: str, title: str) -
     recent = sorted({end for end, _ in periods})[-_RECENT["quarterly" if quarterly else "annual"]:]
     periods = [(end, index) for end, index in periods if end >= recent[0]]
 
+    # The filer's reporting currency: USD for US filers, often the home currency for an IFRS filer (TWD, EUR).
+    currencies = [unit for values, unit in lines.values() if values and _is_currency(unit)]
+    currency = max(set(currencies), key=currencies.count) if currencies else "USD"
     header = (
-        f"# {title} for {ticker.upper()} ({freq}), USD in millions unless the row says otherwise\n"
+        f"# {title} for {ticker.upper()} ({freq}), {currency} in millions unless the row says otherwise\n"
         f"# SEC EDGAR facts filed on or before {as_of_date}, at the values filed then; the latest {len(recent)}"
         f" periods, oldest first, each line followed by its change on the same span a year earlier\n"
         f"{_missing_filing(cik, us_gaap, as_of_date)}\n"
@@ -282,12 +336,12 @@ def _statement(kind: str, ticker: str, freq: str, as_of_date: str, title: str) -
         if not values:
             rows.append(",".join([label] + ["unavailable (not tagged by this filer)"] * len(periods)))
             continue
-        name = label if unit == "USD" else f"{label} ({unit})"
+        name = label if unit == currency else f"{label} ({unit})"
         # Plain numbers: a thousands separator would split the CSV field.
         cells = []
         for end, index in periods:
             value = values.get((end, index)) if chosen[label].get(end) == index else None
-            cells.append("" if value is None else f"{value / 1e6:.0f}" if unit == "USD" else f"{value:.2f}")
+            cells.append("" if value is None else f"{value / 1e6:.0f}" if _is_currency(unit) else f"{value:.2f}")
         rows.append(",".join([name] + cells))
         rows.append(",".join([f"YoY change in {label}"] + [
             _year_on_year(values, end, index) if chosen[label].get(end) == index else "" for end, index in periods]))
