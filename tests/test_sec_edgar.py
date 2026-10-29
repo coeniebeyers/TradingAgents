@@ -240,6 +240,17 @@ def test_capital_expenditure_is_found_under_either_tag_filers_use(monkeypatch):
     assert [r for r in out.splitlines() if r.startswith("Capital Expenditure")] == ["Capital Expenditure,70"]
 
 
+@pytest.mark.unit
+def test_the_cash_flow_statement_shows_stock_based_compensation(monkeypatch):
+    """Operating cash flow adds back pay made in shares; the statement shows how much, so free cash flow can take it off."""
+    facts = {"facts": {"us-gaap": {"ShareBasedCompensation": {"units": {"USD": [
+        _fact("2024-12-31", 380_000_000, "2025-02-10", start="2024-01-01")]}}}}}
+    monkeypatch.setattr(sec_edgar, "_fetch_json",
+                        lambda url: TICKER_MAP if "company_tickers" in url else facts)
+    out = sec_edgar.get_cashflow("AAPL", "annual", "2025-03-01")
+    assert [r for r in out.splitlines() if r.startswith("Stock-Based")] == ["Stock-Based Compensation,380"]
+
+
 def _columns(out):
     return [line for line in out.splitlines() if line.startswith(",")][0].split(",")[1:]
 

@@ -71,6 +71,9 @@ _STATEMENTS: dict[str, list[tuple[str, tuple[str, ...]]]] = {
         ("Financing Cash Flow", ("NetCashProvidedByUsedInFinancingActivities",)),
         ("Capital Expenditure", ("PaymentsToAcquirePropertyPlantAndEquipment",
                                  "PaymentsToAcquireProductiveAssets")),
+        # Added back in operating cash flow though it is paid in shares, so free cash flow before it flatters a
+        # company that pays its staff in stock.
+        ("Stock-Based Compensation", ("ShareBasedCompensation", "AllocatedShareBasedCompensationExpense")),
     ],
 }
 
@@ -99,6 +102,7 @@ _IFRS_STATEMENTS: dict[str, list[tuple[str, tuple[str, ...]]]] = {
         ("Financing Cash Flow", ("CashFlowsFromUsedInFinancingActivities",)),
         ("Capital Expenditure", ("PurchaseOfPropertyPlantAndEquipmentClassifiedAsInvestingActivities",
                                  "PurchaseOfPropertyPlantAndEquipment")),
+        ("Stock-Based Compensation", ("AdjustmentsForSharebasedPayments",)),
     ],
 }
 
