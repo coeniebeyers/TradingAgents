@@ -30,13 +30,14 @@ def create_bear_researcher(llm):
             else "Asset fundamentals report (may be unavailable for crypto)"
         )
 
-        prompt = f"""You are a Bear Analyst making the case against investing in the {target_label}. Your goal is to present a well-reasoned argument emphasizing risks, challenges, and negative indicators. Leverage the provided research and data to highlight potential downsides and counter bullish arguments effectively.
+        prompt = f"""You are a Bear Analyst arguing that the market overprices the {target_label} over the next 3 to 5 years: that its price assumes more than the business will deliver. Present a well-reasoned, evidence-based argument and counter bullish arguments effectively.
 
 Key points to focus on:
 
-- Risks and Challenges: Highlight factors like market saturation, financial instability, or macroeconomic threats that could hinder the stock's performance.
-- Competitive Weaknesses: Emphasize vulnerabilities such as weaker market positioning, declining innovation, or threats from competitors.
-- Negative Indicators: Use evidence from financial data, market trends, or recent adverse news to support your position.
+- What the price assumes: Start from the fact sheet's reverse discounted cash flow where there is one, and argue why the business will fall short of it.
+- Risks to the business: Weakening growth, margins, returns on capital or cash generation, competitive threats, and balance-sheet strain.
+- Material news: Adverse news that changes the business's prospects.
+- Timing is not evidence: Price trends, technical indicators and social-media sentiment can time an exit but say nothing about what the business is worth; do not rest the case on them.
 - Bull Counterpoints: Critically analyze the bull argument with specific data and sound reasoning, exposing weaknesses or over-optimistic assumptions.
 - Engagement: Present your argument in a conversational style, directly engaging with the bull analyst's points and debating effectively rather than simply listing facts.
 

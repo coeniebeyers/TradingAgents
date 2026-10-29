@@ -68,6 +68,7 @@ class AgentState(MessagesState):
     ]
     final_trade_decision: Annotated[str, "Final decision from the Portfolio Manager"]
     research_rating: Annotated[str, "The Research Manager's 5-tier rating, or REVIEW when it has none"]
+    research_samples: Annotated[list[str], "Each Research Manager answer when it is sampled several times; the rating is their vote"]
     final_rating: Annotated[str, "The run's rating: the Research Manager's (the Portfolio Manager only plans), or REVIEW"]
     past_context: Annotated[str, "Memory log context for the Portfolio Manager (same-ticker decisions + cross-ticker lessons), written by the Memory Log step"]
     memory_note: Annotated[str, "What the Memory Log step could not settle or read this run, for the report; empty when all went well"]

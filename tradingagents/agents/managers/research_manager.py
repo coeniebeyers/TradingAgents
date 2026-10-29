@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import contextvars
 import re
+from concurrent.futures import ThreadPoolExecutor
 
 from tradingagents.agents.context import get_instrument_context_from_state, get_language_instruction
-from tradingagents.agents.rating import RATING_REVIEW, parse_rating
+from tradingagents.agents.rating import RATING_REVIEW, parse_rating, vote_rating
 from tradingagents.agents.schemas import ResearchPlan, render_research_plan
 from tradingagents.agents.structured import (
     NO_EXTERNAL_TOOLS,
@@ -23,7 +25,22 @@ def research_rating(plan: str) -> str:
     return m.group(1).capitalize() if m else parse_rating(plan or "", RATING_REVIEW)
 
 
-def create_research_manager(llm):
+def voted_plan(plans: list[str]) -> tuple[str, str]:
+    """The plan and rating of several answers to the same debate: the first answer that agrees with
+    the vote, or, when the vote is a Hold no answer gave, a note of the split above every answer."""
+    ratings = [research_rating(p) for p in plans]
+    rating = vote_rating(ratings)
+    for plan, r in zip(plans, ratings, strict=True):
+        if r == rating:
+            return plan, rating
+    answers = "\n\n---\n\n".join(f"**Answer {i}** ({r})\n\n{p}" for i, (p, r) in enumerate(zip(plans, ratings, strict=True), 1))
+    return (f"**Recommendation**: {rating}\n\n**Rationale**: The {len(plans)} answers split "
+            f"({', '.join(ratings)}) with no majority, so the evidence is split: {rating}.\n\n---\n\n{answers}"), rating
+
+
+def create_research_manager(llm, samples: int = 1):
+    """The Research Manager node. With ``samples`` above 1 it answers that many times side by side
+    and the rating is their vote (see ``voted_plan``)."""
     structured_llm = bind_structured(llm, ResearchPlan, "Research Manager")
 
     def research_manager_node(state) -> dict:
@@ -80,13 +97,25 @@ Reason before you rate. Write these sections, in this order, and give the recomm
 
 {NO_EXTERNAL_TOOLS}""" + get_language_instruction()
 
-        investment_plan = invoke_structured_or_freetext(
-            structured_llm,
-            llm,
-            prompt,
-            render_research_plan,
-            "Research Manager",
-        )
+        def answer() -> str:
+            return invoke_structured_or_freetext(
+                structured_llm,
+                llm,
+                prompt,
+                render_research_plan,
+                "Research Manager",
+            )
+
+        if samples > 1:
+            # Each answer runs in a copy of this context, so the run's callbacks see its model calls.
+            contexts = [contextvars.copy_context() for _ in range(samples)]
+            with ThreadPoolExecutor(samples) as pool:
+                plans = list(pool.map(lambda ctx: ctx.run(answer), contexts))
+            investment_plan, rating = voted_plan(plans)
+        else:
+            plans = []
+            investment_plan = answer()
+            rating = research_rating(investment_plan)
 
         new_investment_debate_state = {
             "history": investment_debate_state.get("history", ""),
@@ -99,7 +128,8 @@ Reason before you rate. Write these sections, in this order, and give the recomm
         return {
             "investment_debate_state": new_investment_debate_state,
             "investment_plan": investment_plan,
-            "research_rating": research_rating(investment_plan),
+            "research_rating": rating,
+            "research_samples": plans,
         }
 
     return research_manager_node

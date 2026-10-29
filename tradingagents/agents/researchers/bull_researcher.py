@@ -30,12 +30,13 @@ def create_bull_researcher(llm):
             else "Asset fundamentals report (may be unavailable for crypto)"
         )
 
-        prompt = f"""You are a Bull Analyst advocating for investing in the {target_label}. Your task is to build a strong, evidence-based case emphasizing growth potential, competitive advantages, and positive market indicators. Leverage the provided research and data to address concerns and counter bearish arguments effectively.
+        prompt = f"""You are a Bull Analyst arguing that the market underprices the {target_label} over the next 3 to 5 years: that the business will deliver more than its price assumes. Build a strong, evidence-based case and counter bearish arguments effectively.
 
 Key points to focus on:
-- Growth Potential: Highlight the company's market opportunities, revenue projections, and scalability.
-- Competitive Advantages: Emphasize factors like unique products, strong branding, or dominant market positioning.
-- Positive Indicators: Use financial health, industry trends, and recent positive news as evidence.
+- What the price assumes: Start from the fact sheet's reverse discounted cash flow where there is one, and argue why the business can beat that.
+- Growth and returns: The company's record and runway of growth, margins, returns on capital and cash generation, and the competitive advantages that sustain them.
+- Balance sheet and material news: Financial strength, and news that changes the business's prospects.
+- Timing is not evidence: Price trends, technical indicators and social-media sentiment can time an entry but say nothing about what the business is worth; do not rest the case on them.
 - Bear Counterpoints: Critically analyze the bear argument with specific data and sound reasoning, addressing concerns thoroughly and showing why the bull perspective holds stronger merit.
 - Engagement: Present your argument in a conversational style, engaging directly with the bear analyst's points and debating effectively rather than just listing data.
 

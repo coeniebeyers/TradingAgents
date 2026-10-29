@@ -248,7 +248,7 @@ def _run_details(final_state: dict, settings: dict | None) -> list[tuple[str, st
 def render_report(ticker: str, final_state: dict, settings: dict | None, parts) -> str:
     """The report page: title and rating, what produced the run, contents, sections."""
     md = _markdown()
-    rating = run_rating(final_state) if final_state.get("final_trade_decision") else ""
+    rating = run_rating(final_state) if final_state.get("final_trade_decision") or final_state.get("research_rating") else ""
     tone = _TONE.get(rating, "review")
     date = final_state.get("trade_date", "")
 

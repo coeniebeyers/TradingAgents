@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import re
 import unicodedata
+from collections import Counter
 
 # Canonical, ordered 5-tier scale (most bullish to most bearish).
 RATINGS_5_TIER: tuple[str, ...] = (
@@ -111,12 +112,31 @@ def parse_rating(text: str, default: str = RATING_REVIEW) -> str:
 
 
 def run_rating(final_state: dict) -> str:
-    """A finished run's rating: the Portfolio Manager's own, else read from its decision.
+    """A finished run's rating: the Portfolio Manager's own, else read from its decision, else the
+    Research Manager's when the run ended there.
 
     The fallback serves a state without ``final_rating``, such as a run an older
     version completed and a checkpoint hands back unchanged.
     """
-    return final_state.get("final_rating") or parse_rating(final_state.get("final_trade_decision", ""))
+    if final_state.get("final_rating"):
+        return final_state["final_rating"]
+    if final_state.get("final_trade_decision"):
+        return parse_rating(final_state["final_trade_decision"])
+    # A research-only run ends at the Research Manager, whose rating is the run's.
+    return final_state.get("research_rating") or RATING_REVIEW
+
+
+def vote_rating(ratings: list[str]) -> str:
+    """The majority of several ratings of the same case, ignoring REVIEW; Hold when none has a majority.
+
+    Samples split with no majority mean the evidence is split, which is what Hold says.
+    REVIEW only when no sample has a rating at all.
+    """
+    rated = [r for r in ratings if r in RATINGS_5_TIER]
+    if not rated:
+        return RATING_REVIEW
+    top, n = Counter(rated).most_common(1)[0]
+    return top if n * 2 > len(rated) else "Hold"
 
 
 def is_review(signal: str) -> bool:

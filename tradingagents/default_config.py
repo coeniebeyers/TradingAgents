@@ -20,6 +20,8 @@ _ENV_OVERRIDES = {
     "TRADINGAGENTS_MAX_DEBATE_ROUNDS":    "max_debate_rounds",
     "TRADINGAGENTS_MAX_RISK_ROUNDS":      "max_risk_discuss_rounds",
     "TRADINGAGENTS_MAX_TOOL_ROUNDS":      "max_tool_rounds",
+    "TRADINGAGENTS_PIPELINE":             "pipeline",
+    "TRADINGAGENTS_RESEARCH_SAMPLES":     "research_samples",
     "TRADINGAGENTS_CHECKPOINT_ENABLED":   "checkpoint_enabled",
     "TRADINGAGENTS_BENCHMARK_TICKER":     "benchmark_ticker",
     "TRADINGAGENTS_TEMPERATURE":          "temperature",
@@ -139,6 +141,12 @@ def build_default_config() -> dict:
         "max_recur_limit": 100,
         # Rounds of tool calls an analyst may make before it is asked for its report.
         "max_tool_rounds": 20,
+        # "full" runs research, trading, risk and the Portfolio Manager; "research" ends at the
+        # Research Manager's rating, a per-stock record that a later step plans a book from.
+        "pipeline": "full",
+        # Research Manager answers per run; above 1 the rating is their majority (Hold when none),
+        # which removes the judge's own sampling noise from the rating.
+        "research_samples": 1,
         # News / data fetching parameters
         # Increase for longer lookback strategies or to broaden macro coverage;
         # decrease to reduce token usage in agent prompts.

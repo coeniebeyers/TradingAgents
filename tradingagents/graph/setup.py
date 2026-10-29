@@ -99,15 +99,18 @@ class GraphSetup:
         deep_thinking_llm: Any,
         conditional_logic: ConditionalLogic,
         max_tool_rounds: int,
+        research_samples: int = 1,
     ):
         """Initialize with required components."""
         self.quick_thinking_llm = quick_thinking_llm
         self.deep_thinking_llm = deep_thinking_llm
         self.conditional_logic = conditional_logic
         self.max_tool_rounds = max_tool_rounds
+        self.research_samples = research_samples
 
     def setup_graph(
-        self, selected_analysts=("market", "social", "news", "fundamentals"), memory_node=None
+        self, selected_analysts=("market", "social", "news", "fundamentals"), memory_node=None,
+        pipeline: str = "full",
     ):
         """Set up and compile the agent workflow graph.
 
@@ -119,7 +122,13 @@ class GraphSetup:
                 - "fundamentals": Fundamentals analyst
             memory_node: Node that settles past decisions and returns the run's
                 ``past_context``. It runs alongside the analysts.
+            pipeline: "full", or "research" to end at the Research Manager's rating:
+                no trader, risk team or Portfolio Manager, and so no memory log step,
+                whose lessons only the Portfolio Manager reads.
         """
+        if pipeline not in ("full", "research"):
+            raise ValueError(f"pipeline must be 'full' or 'research', got {pipeline!r}")
+        research_only = pipeline == "research"
         plan = build_analyst_execution_plan(selected_analysts)
 
         analyst_factories = {
@@ -131,7 +140,7 @@ class GraphSetup:
 
         bull_researcher_node = create_bull_researcher(self.quick_thinking_llm)
         bear_researcher_node = create_bear_researcher(self.quick_thinking_llm)
-        research_manager_node = create_research_manager(self.deep_thinking_llm)
+        research_manager_node = create_research_manager(self.deep_thinking_llm, self.research_samples)
         trader_node = create_trader(self.quick_thinking_llm)
 
         aggressive_analyst = create_aggressive_debator(self.quick_thinking_llm)
@@ -148,17 +157,18 @@ class GraphSetup:
         workflow.add_node("Bull Researcher", bull_researcher_node)
         workflow.add_node("Bear Researcher", bear_researcher_node)
         workflow.add_node("Research Manager", research_manager_node)
-        workflow.add_node("Trader", trader_node)
-        workflow.add_node("Aggressive Analyst", aggressive_analyst)
-        workflow.add_node("Neutral Analyst", neutral_analyst)
-        workflow.add_node("Conservative Analyst", conservative_analyst)
-        workflow.add_node("Portfolio Manager", portfolio_manager_node)
+        if not research_only:
+            workflow.add_node("Trader", trader_node)
+            workflow.add_node("Aggressive Analyst", aggressive_analyst)
+            workflow.add_node("Neutral Analyst", neutral_analyst)
+            workflow.add_node("Conservative Analyst", conservative_analyst)
+            workflow.add_node("Portfolio Manager", portfolio_manager_node)
 
         # The analysts work at the same time; the research debate starts once
         # every one of them has filed its report. The memory log settles past
         # decisions alongside them: only the Portfolio Manager reads its lessons.
         first_steps = [spec.agent_node for spec in plan.specs]
-        if memory_node is not None:
+        if memory_node is not None and not research_only:
             workflow.add_node("Memory Log", memory_node)
             first_steps.append("Memory Log")
         for node in first_steps:
@@ -172,6 +182,9 @@ class GraphSetup:
                 self.conditional_logic.should_continue_debate,
                 DEBATE_PATH_MAP,
             )
+        if research_only:
+            workflow.add_edge("Research Manager", END)
+            return workflow
         workflow.add_edge("Research Manager", "Trader")
         workflow.add_edge("Trader", "Aggressive Analyst")
         # All three risk edges share the complete RISK_ANALYSIS_PATH_MAP (#1088).

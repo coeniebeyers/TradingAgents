@@ -98,6 +98,7 @@ class TradingAgentsGraph:
             self.deep_thinking_llm,
             self.conditional_logic,
             max_tool_rounds,
+            research_samples=int(self.config.get("research_samples") or 1),
         )
 
         self.propagator = Propagator(
@@ -109,7 +110,9 @@ class TradingAgentsGraph:
         self.selected_analysts = tuple(selected_analysts)
 
         # Set up the graph: keep the workflow for recompilation with a checkpointer.
-        self.workflow = self.graph_setup.setup_graph(selected_analysts, memory_node=self._memory_step)
+        self.pipeline = self.config.get("pipeline") or "full"
+        self.workflow = self.graph_setup.setup_graph(selected_analysts, memory_node=self._memory_step,
+                                                     pipeline=self.pipeline)
         self.graph = self.workflow.compile()
         self._checkpointer_ctx = None
         self._resuming = False
@@ -290,6 +293,8 @@ class TradingAgentsGraph:
             "analysts": list(self.selected_analysts),
             "max_debate_rounds": cfg.get("max_debate_rounds"),
             "max_risk_discuss_rounds": cfg.get("max_risk_discuss_rounds"),
+            "pipeline": cfg.get("pipeline") or "full",
+            "research_samples": cfg.get("research_samples") or 1,
             "output_language": cfg.get("output_language"),
             "data_vendors": dict(cfg.get("data_vendors") or {}),
             "tool_vendors": dict(cfg.get("tool_vendors") or {}),
@@ -383,6 +388,8 @@ class TradingAgentsGraph:
         """Record a finished run: its state log, and its decision in the memory log
         for reflection on the next same-ticker run. propagate() and the CLI both end here."""
         self._log_state(trade_date, final_state)
+        if self.config.get("pipeline") == "research":
+            return  # no decision to reflect on: the memory log holds the Portfolio Manager's
         decision = final_state.get("final_trade_decision")
         if not decision:
             logger.warning("No final decision for %s on %s; nothing added to the memory log",
@@ -461,30 +468,23 @@ class TradingAgentsGraph:
 
     def _log_state(self, trade_date, final_state):
         """Write a run's final state to JSON under the run's own ticker."""
+        debate = final_state.get("investment_debate_state") or {}
+        risk = final_state.get("risk_debate_state") or {}
         entry = {
             "company_of_interest": final_state["company_of_interest"],
             "trade_date": final_state["trade_date"],
-            "market_report": final_state["market_report"],
-            "sentiment_report": final_state["sentiment_report"],
-            "news_report": final_state["news_report"],
-            "fundamentals_report": final_state["fundamentals_report"],
-            "investment_debate_state": {
-                "bull_history": final_state["investment_debate_state"]["bull_history"],
-                "bear_history": final_state["investment_debate_state"]["bear_history"],
-                "history": final_state["investment_debate_state"]["history"],
-                "current_response": final_state["investment_debate_state"][
-                    "current_response"
-                ],
-            },
-            "trader_investment_plan": final_state["trader_investment_plan"],
-            "risk_debate_state": {
-                "aggressive_history": final_state["risk_debate_state"]["aggressive_history"],
-                "conservative_history": final_state["risk_debate_state"]["conservative_history"],
-                "neutral_history": final_state["risk_debate_state"]["neutral_history"],
-                "history": final_state["risk_debate_state"]["history"],
-            },
-            "investment_plan": final_state["investment_plan"],
-            "final_trade_decision": final_state["final_trade_decision"],
+            "market_report": final_state.get("market_report", ""),
+            "sentiment_report": final_state.get("sentiment_report", ""),
+            "news_report": final_state.get("news_report", ""),
+            "fundamentals_report": final_state.get("fundamentals_report", ""),
+            "investment_debate_state": {k: debate.get(k, "") for k in
+                                        ("bull_history", "bear_history", "history", "current_response")},
+            "trader_investment_plan": final_state.get("trader_investment_plan", ""),
+            "risk_debate_state": {k: risk.get(k, "") for k in
+                                  ("aggressive_history", "conservative_history", "neutral_history", "history")},
+            "investment_plan": final_state.get("investment_plan", ""),
+            "research_samples": final_state.get("research_samples") or [],
+            "final_trade_decision": final_state.get("final_trade_decision", ""),
             "final_rating": run_rating(final_state),
             "run_settings": self.run_settings(),
         }

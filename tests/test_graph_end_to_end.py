@@ -388,3 +388,24 @@ def test_the_memory_step_reads_lessons_as_of_the_trade_date_and_settles_once(tmp
 
     assert asked == ["2026-01-20", "2026-01-20"]
     assert (tmp_path / "log.md").read_text() == log_after_first
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("structured", [False, True], ids=["free-text", "structured"])
+def test_a_research_run_ends_at_the_research_managers_vote(tmp_path, monkeypatch, offline, structured):
+    # Stage 1 rates the stock and stops: no trader, risk team, Portfolio Manager or memory log,
+    # and with three Research Manager answers the rating is their vote.
+    graph = _graph(tmp_path, monkeypatch, ScriptedModel(structured=structured),
+                   pipeline="research", research_samples=3)
+    assert not {"Trader", "Portfolio Manager", "Memory Log"} & set(graph.graph.get_graph().nodes)
+
+    state, signal = graph.propagate("NVDA", TRADE_DATE)
+
+    assert signal == state["research_rating"] == "Overweight"
+    assert len(state["research_samples"]) == 3
+    assert not state.get("final_trade_decision") and not state.get("trader_investment_plan")
+    assert not (tmp_path / "log.md").exists() or "NVDA" not in (tmp_path / "log.md").read_text()
+    report = graph.save_reports(state, "NVDA", save_path=tmp_path / "report")
+    text = report.read_text()
+    assert "- Rating: Overweight" in text and "Overweight, Overweight, Overweight" in text
+    assert not (tmp_path / "report" / "5_portfolio").exists()
