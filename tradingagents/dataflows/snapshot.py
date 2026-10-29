@@ -12,6 +12,8 @@ read exactly what the live run read, so a caller can hand a run the data it coll
   a wider one says the snapshot holds only that week.
 - Market news: the stored answer, cut to the requested number of headlines.
 - Prediction markets: a topic the collector asked about.
+- A settled "no data" (no statements for a fund, no headlines that week) is served as collected; a throttle or
+  an error is fetched again.
 - Macro series stay live: FRED serves each series as known on the date, so the answer is already fixed.
 
 A call the snapshot cannot answer is fetched live and recorded in ``misses``, so the run can say which inputs were
@@ -56,12 +58,18 @@ def _blocks(text: str) -> tuple[str, list[str]]:
     return (parts[0], parts[1:]) if parts and not parts[0].startswith("### ") else ("", parts)
 
 
+def _answered(call: dict) -> bool:
+    """Whether a collected call holds the vendor's answer: data, or a settled "no data" (no statements for a fund,
+    no headlines that week). A throttle or an error says nothing about the data, so that call is fetched again."""
+    return call.get("status") in ("ok", "empty") or str(call.get("output") or "").startswith("NO_DATA_AVAILABLE")
+
+
 class Snapshot:
     def __init__(self, data: dict):
         self.as_of = data["as_of"]
         self.ticker = data["ticker"].upper()
         self.prices_dir = data.get("prices_dir")
-        self.calls = [c for c in data.get("calls", []) if c.get("status") == "ok"]
+        self.calls = [c for c in data.get("calls", []) if _answered(c)]
         self.misses: list[dict] = []
 
     def _find(self, tool: str, ticker: str | None = None, **args):

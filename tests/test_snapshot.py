@@ -42,6 +42,8 @@ def _calls():
          "status": "ok", "output": "Polymarket: Fed rate cut markets"},
         {"ticker": "SYG.JO", "tool": "get_insider_transactions", "args": {}, "status": "unavailable",
          "output": "DATA_UNAVAILABLE: throttled"},
+        {"ticker": "SYG.JO", "tool": "get_cashflow", "args": {"freq": "quarterly", "curr_date": AS_OF},
+         "status": "unavailable", "output": "NO_DATA_AVAILABLE: No usable market data for 'SYG.JO' (no cash flow data)."},
     ]
 
 
@@ -120,3 +122,10 @@ def test_a_snapshot_from_another_date_is_refused(snap_config):
     snapshot.check_date(AS_OF)
     with pytest.raises(ValueError, match="for 2026-10-28, not the run's date 2026-10-29"):
         snapshot.check_date("2026-10-29")
+
+
+@pytest.mark.unit
+def test_a_settled_no_data_answer_is_served_as_collected(snap_config, monkeypatch):
+    monkeypatch.setattr("tradingagents.dataflows.router._route", lambda *a, **k: pytest.fail("fetched live"))
+    assert route_to_vendor("get_cashflow", "SYG.JO", "quarterly", AS_OF).startswith("NO_DATA_AVAILABLE")
+    assert snapshot.active().misses == []
