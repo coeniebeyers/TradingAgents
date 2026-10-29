@@ -21,6 +21,31 @@ _RECOMMENDATION_HEADING = re.compile(
     r"^#+\s*\W*recommendation\W*\s*\n\s*\W*(buy|overweight|hold|underweight|sell)\W*\s*$", re.I | re.M)
 
 
+# A section of an answer, labelled ("**Rationale**: ...") or under a heading ("## Rationale").
+_SECTION = re.compile(r"(?:\*\*|^#+[ \t]*)(What the price assumes|Rationale)(?:\*\*[ \t]*:|[ \t]*\n)\s*(.*?)(?=\n\*\*|\n#|\Z)",
+                      re.M | re.S)
+_RATING_WORD = re.compile(r"\b(Buy|Overweight|Hold|Underweight|Sell)\b")
+_MIN_RATIONALE = 300
+
+
+def thin_reasons(plan: str) -> list[str]:
+    """Why an answer is too thin to act on, if it is.
+
+    The model reasons at length before it answers and sometimes keeps only the verdict: "the price assumes a very
+    demanding recovery; Hold" leaves the reader nothing to check or act on, and a vote of such answers agrees on
+    nothing."""
+    sections = {name: text.strip() for name, text in _SECTION.findall(plan or "")}
+    implied, rationale = sections.get("What the price assumes", ""), sections.get("Rationale", "")
+    reasons = []
+    if not re.search(r"\d", implied):
+        reasons.append("'What the price assumes' gives no numbers")
+    if _RATING_WORD.search(implied):
+        reasons.append("'What the price assumes' names a rating")
+    if len(rationale) < _MIN_RATIONALE:
+        reasons.append("the rationale is a line, not the evidence for and against")
+    return reasons
+
+
 def research_rating(plan: str) -> str:
     """The Research Manager's rating, which is the run's: its labelled recommendation or recommendation
     heading, else the rating its free text opens with or labels, else REVIEW."""
@@ -101,13 +126,20 @@ Reason before you rate. Write these sections, in this order, and give the recomm
 {NO_EXTERNAL_TOOLS}""" + get_language_instruction()
 
         def answer() -> str:
-            return invoke_structured_or_freetext(
-                structured_llm,
-                llm,
-                prompt,
-                render_research_plan,
-                "Research Manager",
-            )
+            plan = invoke_structured_or_freetext(structured_llm, llm, prompt, render_research_plan, "Research Manager")
+            reasons = thin_reasons(plan)
+            if not reasons:
+                return plan
+            # Asked once more, with what was missing; the fuller of the two answers stands.
+            again = invoke_structured_or_freetext(
+                structured_llm, llm,
+                prompt + f"""
+
+---
+
+A first answer to this was too thin to act on: {"; ".join(reasons)}. Answer again in full: the numbers the price implies, the fundamental evidence for and against, and which debate arguments you accepted or rejected.""",
+                render_research_plan, "Research Manager")
+            return again if len(thin_reasons(again)) <= len(reasons) else plan
 
         if samples > 1:
             # Each answer runs in a copy of this context, so the run's callbacks see its model calls.
