@@ -6,7 +6,7 @@ import pandas as pd
 import pytest
 
 from tradingagents.agents.managers.portfolio_manager import create_portfolio_manager
-from tradingagents.agents.schemas import PortfolioDecision, PortfolioRating
+from tradingagents.agents.schemas import PortfolioDecision
 from tradingagents.graph.propagation import Propagator
 from tradingagents.graph.trading_graph import TradingAgentsGraph
 from tradingagents.memory import TradingMemoryLog, settlement
@@ -84,6 +84,7 @@ def _make_pm_state(past_context=""):
         "news_report": "News report.",
         "fundamentals_report": "Fundamentals report.",
         "investment_plan": "Research plan.",
+        "research_rating": "Overweight",
         "trader_investment_plan": "Trader plan.",
     }
 
@@ -94,7 +95,6 @@ def _structured_pm_llm(captured: dict, decision: PortfolioDecision | None = None
     """
     if decision is None:
         decision = PortfolioDecision(
-            rating=PortfolioRating.HOLD,
             executive_summary="Hold the position; await catalyst.",
             investment_thesis="Balanced view; neither side carried the debate.",
         )
@@ -791,7 +791,6 @@ class TestPortfolioManagerInjection:
         can parse without any extra LLM call."""
         captured = {}
         decision = PortfolioDecision(
-            rating=PortfolioRating.OVERWEIGHT,
             executive_summary="Build position gradually over the next two weeks.",
             investment_thesis="AI capex cycle remains intact; institutional flows constructive.",
             price_target=215.0,
@@ -801,7 +800,7 @@ class TestPortfolioManagerInjection:
         pm_node = create_portfolio_manager(llm)
         result = pm_node(_make_pm_state())
         md = result["final_trade_decision"]
-        assert "**Rating**: Overweight" in md
+        assert "**Rating**: Overweight" in md  # the Research Manager's, from the state
         assert "**Executive Summary**: Build position gradually" in md
         assert "**Investment Thesis**: AI capex cycle" in md
         assert "**Price Target**: 215.0" in md
@@ -810,14 +809,15 @@ class TestPortfolioManagerInjection:
     def test_pm_falls_back_to_freetext_when_structured_unavailable(self):
         """If a provider does not support with_structured_output, the agent
         falls back to a plain invoke and returns whatever prose the model
-        produced, so the pipeline never blocks."""
-        plain_response = "**Rating**: Sell\n\nExit ahead of guidance."
+        produced under the Research Manager's rating, so the pipeline never blocks."""
+        plain_response = "Exit ahead of guidance."
         llm = MagicMock()
         llm.with_structured_output.side_effect = NotImplementedError("provider unsupported")
         llm.invoke.return_value = MagicMock(content=plain_response)
         pm_node = create_portfolio_manager(llm)
         result = pm_node(_make_pm_state())
-        assert result["final_trade_decision"] == plain_response
+        assert result["final_trade_decision"] == "**Rating**: Overweight\n\nExit ahead of guidance."
+        assert result["final_rating"] == "Overweight"
 
     # get_past_context ordering and limits
 

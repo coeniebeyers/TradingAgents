@@ -2,13 +2,25 @@
 
 from __future__ import annotations
 
+import re
+
 from tradingagents.agents.context import get_instrument_context_from_state, get_language_instruction
+from tradingagents.agents.rating import RATING_REVIEW, parse_rating
 from tradingagents.agents.schemas import ResearchPlan, render_research_plan
 from tradingagents.agents.structured import (
     NO_EXTERNAL_TOOLS,
     bind_structured,
     invoke_structured_or_freetext,
 )
+
+_RECOMMENDATION = re.compile(r"^\W*recommendation\W*:\W*(buy|overweight|hold|underweight|sell)\b", re.I | re.M)
+
+
+def research_rating(plan: str) -> str:
+    """The Research Manager's rating, which is the run's: its labelled recommendation, else the
+    rating its free text opens with or labels, else REVIEW."""
+    m = _RECOMMENDATION.search(plan or "")
+    return m.group(1).capitalize() if m else parse_rating(plan or "", RATING_REVIEW)
 
 
 def create_research_manager(llm):
@@ -83,6 +95,7 @@ Write these sections, in this order, starting with the recommendation on its own
         return {
             "investment_debate_state": new_investment_debate_state,
             "investment_plan": investment_plan,
+            "research_rating": research_rating(investment_plan),
         }
 
     return research_manager_node

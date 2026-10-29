@@ -14,7 +14,6 @@ import pytest
 from pydantic import ValidationError
 
 from tradingagents.agents.analysts.sentiment_analyst import create_sentiment_analyst
-from tradingagents.agents.managers.portfolio_manager import create_portfolio_manager
 from tradingagents.agents.managers.research_manager import create_research_manager
 from tradingagents.agents.schemas import (
     PortfolioDecision,
@@ -93,7 +92,6 @@ class TestNullishFloatCoercion:
 
     def test_pm_nullish_price_target_coerces_to_none(self):
         d = PortfolioDecision(
-            rating=PortfolioRating.OVERWEIGHT,
             executive_summary="s",
             investment_thesis="t",
             price_target="N/A",
@@ -491,14 +489,12 @@ class TestSentimentAnalystAgent:
 @pytest.mark.unit
 @pytest.mark.parametrize("source", [
     pytest.param(lambda: ResearchPlan.model_fields["recommendation"].description, id="ResearchPlan.recommendation"),
-    pytest.param(lambda: PortfolioDecision.model_fields["rating"].description, id="PortfolioDecision.rating"),
     pytest.param(lambda: inspect.getsource(create_research_manager), id="research_manager prompt"),
-    pytest.param(lambda: inspect.getsource(create_portfolio_manager), id="portfolio_manager prompt"),
 ])
 def test_conflict_alone_is_not_a_hold_trigger(source):
     # The debate always contains conflicting arguments, so a Hold condition that
     # conflict satisfies fires on every run and swallows directional calls
-    # (#1321). All four decision sites must state the same rule.
+    # (#1321). Both sites that rate must state the same rule; the Portfolio Manager only plans.
     text = " ".join(source().split())
     assert "conflict alone is not a reason to Hold" in text or \
         "Conflicting arguments alone are not a reason to Hold" in text
@@ -511,18 +507,18 @@ def test_a_price_written_as_a_range_drops_only_that_field(written):
     """Anything that is not a single number becomes None. Letting it through
     fails the whole decision's validation, and the run falls back to free text,
     losing every other field the model got right."""
-    from tradingagents.agents.schemas import PortfolioDecision, PortfolioRating
+    from tradingagents.agents.schemas import PortfolioDecision
 
-    decision = PortfolioDecision(rating=PortfolioRating.BUY, executive_summary="s",
+    decision = PortfolioDecision(executive_summary="s",
                                  investment_thesis="t", price_target=written)
     assert decision.price_target is None
 
 
 @pytest.mark.unit
 def test_a_price_that_is_a_number_survives():
-    from tradingagents.agents.schemas import PortfolioDecision, PortfolioRating
+    from tradingagents.agents.schemas import PortfolioDecision
 
-    decision = PortfolioDecision(rating=PortfolioRating.BUY, executive_summary="s",
+    decision = PortfolioDecision(executive_summary="s",
                                  investment_thesis="t", price_target="$1,150.25")
     assert decision.price_target == 1150.25
 
@@ -530,10 +526,9 @@ def test_a_price_that_is_a_number_survives():
 @pytest.mark.unit
 def test_a_field_the_model_did_not_give_says_so():
     """An omitted line and a line never asked for read the same to an analyst."""
-    from tradingagents.agents.schemas import PortfolioDecision, PortfolioRating, render_pm_decision
+    from tradingagents.agents.schemas import PortfolioDecision, render_pm_decision
 
-    rendered = render_pm_decision(PortfolioDecision(
-        rating=PortfolioRating.HOLD, executive_summary="s", investment_thesis="t"))
+    rendered = render_pm_decision(PortfolioDecision(executive_summary="s", investment_thesis="t"), "Hold")
     assert "Price Target" in rendered and "not provided" in rendered.lower()
 
 

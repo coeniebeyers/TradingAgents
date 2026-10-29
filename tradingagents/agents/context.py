@@ -201,6 +201,22 @@ def report_or_absent(text: str, source: str) -> str:
     return f"(No {source} report in this run: it is not available, not an empty finding.)"
 
 
+def get_fact_sheet_context_from_state(state: Mapping[str, Any]) -> str:
+    """Return the caller's code-computed fact sheet for the debaters, or "".
+
+    Debaters repeated an analyst's misread table (META "EPS down 69%" where the
+    filings show +265%), and only the Research Manager could check them against
+    the figures. Given the fact sheet, they argue from the same numbers. Empty
+    leaves the prompt as it was.
+    """
+    sheet = state.get("fact_sheet")
+    if not (isinstance(sheet, str) and sheet.strip()):
+        return ""
+    return f"""Fact sheet (computed by code from the data the analysts retrieved; where a report disagrees with it, the fact sheet is right, so argue from its figures):
+{sheet.strip()}
+"""
+
+
 def get_events_context_from_state(state: Mapping[str, Any]) -> str:
     """Return the caller's calendar of scheduled events, framed for sizing and timing, or "".
 

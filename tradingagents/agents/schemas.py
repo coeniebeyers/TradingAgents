@@ -219,28 +219,18 @@ def render_trader_proposal(proposal: TraderProposal) -> str:
 
 
 class PortfolioDecision(BaseModel):
-    """Structured output produced by the Portfolio Manager.
+    """Structured output produced by the Portfolio Manager: the plan for acting on the rating.
 
-    The model fills every field as part of its primary LLM call; no separate
-    extraction pass is required. Field descriptions double as the model's
-    output instructions, so the prompt body only needs to convey context and
-    the rating-scale guidance.
+    The rating is the Research Manager's and is not part of this schema, so the
+    plan cannot quietly change it (an empty book once turned Overweights into
+    Holds because an add "cannot be executed"). Field descriptions double as the
+    model's output instructions.
     """
 
-    rating: PortfolioRating = Field(
-        description=(
-            "The final position rating. Exactly one of Buy / Overweight / Hold / "
-            "Underweight / Sell, picked based on the analysts' debate. "
-            "Conflicting arguments alone are not a reason to Hold: commit to the "
-            "stronger side, sized by how decisively it wins. Choose Hold only "
-            "when the evidence is still balanced after weighing, or too thin to "
-            "support a call."
-        ),
-    )
     executive_summary: str = Field(
         description=(
-            "A concise action plan covering entry strategy, position sizing, "
-            "key risk levels, and time horizon. Two to four sentences."
+            "A concise action plan for the given rating covering entry strategy, "
+            "position sizing, key risk levels, and time horizon. Two to four sentences."
         ),
     )
     investment_thesis: str = Field(
@@ -265,7 +255,7 @@ class PortfolioDecision(BaseModel):
         return _coerce_optional_float(v)
 
 
-def render_pm_decision(decision: PortfolioDecision) -> str:
+def render_pm_decision(decision: PortfolioDecision, rating: str) -> str:
     """Render a PortfolioDecision back to the markdown shape the rest of the system expects.
 
     Memory log, CLI display, and saved report files all read this markdown,
@@ -274,7 +264,7 @@ def render_pm_decision(decision: PortfolioDecision) -> str:
     parsers and the report writers already handle.
     """
     parts = [
-        f"**Rating**: {decision.rating.value}",
+        f"**Rating**: {rating}",
         "",
         f"**Executive Summary**: {decision.executive_summary}",
         "",

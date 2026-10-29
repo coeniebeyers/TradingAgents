@@ -69,9 +69,9 @@ def test_prompts_are_unchanged_without_a_calendar(module, factory):
 
 
 @pytest.mark.unit
-def test_portfolio_manager_keeps_the_rating_on_the_research_view():
+def test_portfolio_manager_times_the_plan_around_the_events():
     text = _prompt(*DECIDERS[0], CALENDAR)
-    assert "a scheduled event alone is not a reason to change the rating" in text
+    assert "Put timing and sizing around these events in the Executive Summary" in text
 
 
 @pytest.mark.unit
