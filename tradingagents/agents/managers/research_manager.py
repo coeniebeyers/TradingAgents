@@ -27,6 +27,10 @@ def create_research_manager(llm):
 ---
 
 """ if fact_sheet else "")
+        # Event timing is the risk team's: they get the calendar, so the rating rests on the investment case.
+        timing = (" Timing around scheduled events (an earnings date, a vote, a macro release) is decided later by the"
+                  " risk team, which has the calendar; rate the investment case, not the timing."
+                  if (state.get("events") or "").strip() else "")
 
         investment_debate_state = state["investment_debate_state"]
 
@@ -43,7 +47,7 @@ def create_research_manager(llm):
 - **Underweight**: Cautious view; recommend trimming exposure
 - **Sell**: Strong conviction in the bear thesis; recommend exiting or avoiding the position
 
-The debate always contains conflicting arguments; deciding which side is stronger is the job, so conflict alone is not a reason to Hold. Commit to the side with the stronger case, sized by how decisively it wins. Choose Hold only when the evidence is still balanced after that weighing, or too thin to support a call; do not manufacture a direction to appear decisive. Weigh the bull and bear cases on their merits, independent of which side spoke first or last.
+The debate always contains conflicting arguments; deciding which side is stronger is the job, so conflict alone is not a reason to Hold. Commit to the side with the stronger case, sized by how decisively it wins. Choose Hold only when the evidence is still balanced after that weighing, or too thin to support a call; do not manufacture a direction to appear decisive. Weigh the bull and bear cases on their merits, independent of which side spoke first or last.{timing}
 
 ---
 

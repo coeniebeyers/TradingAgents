@@ -11,6 +11,7 @@ free-text generation and the rating is read from that text.
 from __future__ import annotations
 
 from tradingagents.agents.context import (
+    get_events_context_from_state,
     get_instrument_context_from_state,
     get_language_instruction,
     get_portfolio_context_from_state,
@@ -31,6 +32,15 @@ def create_portfolio_manager(llm):
         risk_debate_state = state["risk_debate_state"]
         research_plan = state["investment_plan"]
         trader_plan = state["trader_investment_plan"]
+
+        events_context = get_events_context_from_state(state)
+        # The rating is the research view; an event ahead shapes how to act on it, so it goes into sizing and timing.
+        events_line = (
+            f"{events_context}Put timing and sizing around these events in the Executive Summary; a scheduled event alone"
+            " is not a reason to change the rating.\n"
+            if events_context
+            else ""
+        )
 
         past_context = state.get("past_context", "")
         lessons_line = (
@@ -57,7 +67,7 @@ def create_portfolio_manager(llm):
 **Context:**
 - Research Manager's investment plan: **{research_plan}**
 - Trader's transaction proposal: **{trader_plan}**
-{lessons_line}
+{lessons_line}{events_line}
 **Risk Analysts Debate History:**
 {history}
 

@@ -72,3 +72,4 @@ class AgentState(MessagesState):
     memory_note: Annotated[str, "What the Memory Log step could not settle or read this run, for the report; empty when all went well"]
     portfolio_context: Annotated[str, "Caller-supplied holdings and cash, rendered at run start; empty when not provided"]
     fact_sheet: Annotated[str, "Caller-supplied figures computed by code from the run's data; empty when not provided"]
+    events: Annotated[str, "Caller-supplied calendar of scheduled events ahead; empty when not provided"]

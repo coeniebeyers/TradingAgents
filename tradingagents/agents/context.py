@@ -201,6 +201,24 @@ def report_or_absent(text: str, source: str) -> str:
     return f"(No {source} report in this run: it is not available, not an empty finding.)"
 
 
+def get_events_context_from_state(state: Mapping[str, Any]) -> str:
+    """Return the caller's calendar of scheduled events, framed for sizing and timing, or "".
+
+    An earnings report tomorrow or a pending vote is a reason to stage an entry or
+    size down through the event, not a reason to change the research view, so it
+    goes to the steps that size and time the position. Empty leaves the prompt as
+    it was.
+    """
+    events = state.get("events")
+    if not (isinstance(events, str) and events.strip()):
+        return ""
+    return f"""
+**Upcoming events** (collected by code before the run; dates are the data vendors'): use them to size and time the position, such as how much to hold through a scheduled event and whether to stage an entry or exit around it. A scheduled event changes timing and size, not the investment view.
+
+{events.strip()}
+"""
+
+
 def get_portfolio_context_from_state(state: Mapping[str, Any]) -> str:
     """Return the caller's portfolio block, or a notice that none was given.
 
