@@ -140,6 +140,7 @@ class TestNullishFloatCoercion:
 class TestRenderResearchPlan:
     def test_required_fields(self):
         p = ResearchPlan(
+            market_implied="m", variant_view="None", margin_of_safety="None", falsifiers="f",
             recommendation=PortfolioRating.OVERWEIGHT,
             rationale="Bull case carried; tailwinds intact.",
             strategic_actions="Build position over two weeks; cap at 5%.",
@@ -152,6 +153,7 @@ class TestRenderResearchPlan:
     def test_all_5_tier_ratings_render(self):
         for rating in PortfolioRating:
             p = ResearchPlan(
+                market_implied="m", variant_view="None", margin_of_safety="None", falsifiers="f",
                 recommendation=rating,
                 rationale="r",
                 strategic_actions="s",
@@ -298,6 +300,7 @@ def _make_rm_state():
 def _structured_rm_llm(captured: dict, plan: ResearchPlan | None = None):
     if plan is None:
         plan = ResearchPlan(
+            market_implied="m", variant_view="None", margin_of_safety="None", falsifiers="f",
             recommendation=PortfolioRating.HOLD,
             rationale="Balanced view across both sides.",
             strategic_actions="Hold current position; reassess after earnings.",
@@ -316,6 +319,7 @@ class TestResearchManagerAgent:
     def test_structured_path_produces_rendered_markdown(self):
         captured = {}
         plan = ResearchPlan(
+            market_implied="m", variant_view="None", margin_of_safety="None", falsifiers="f",
             recommendation=PortfolioRating.OVERWEIGHT,
             rationale="Bull case is stronger; AI tailwind intact.",
             strategic_actions="Build position gradually over two weeks.",
@@ -487,18 +491,19 @@ class TestSentimentAnalystAgent:
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize("source", [
-    pytest.param(lambda: ResearchPlan.model_fields["recommendation"].description, id="ResearchPlan.recommendation"),
-    pytest.param(lambda: inspect.getsource(create_research_manager), id="research_manager prompt"),
-])
-def test_conflict_alone_is_not_a_hold_trigger(source):
-    # The debate always contains conflicting arguments, so a Hold condition that
-    # conflict satisfies fires on every run and swallows directional calls
-    # (#1321). Both sites that rate must state the same rule; the Portfolio Manager only plans.
-    text = " ".join(source().split())
-    assert "conflict alone is not a reason to Hold" in text or \
-        "Conflicting arguments alone are not a reason to Hold" in text
-    assert "materially conflicting" not in text
+def test_research_manager_rates_mispricing_last():
+    # A rating is a verdict on mispricing over 3-5 years: Hold is the default,
+    # technicals and sentiment only time an entry, and the model states what the
+    # price assumes before it rates, so it reasons first instead of filling the
+    # field with the rating it already chose.
+    text = " ".join(inspect.getsource(create_research_manager).split())
+    assert "Start from Hold" in text
+    assert "not evidence of mispricing" in text
+    assert "give the recommendation last" in text
+    assert text.index("**What the price assumes**") < text.index("- **Recommendation**")
+    assert "Never a rating" in " ".join(ResearchPlan.model_fields["market_implied"].description.split())
+    fields = list(ResearchPlan.model_fields)
+    assert fields.index("market_implied") < fields.index("recommendation")
 
 
 @pytest.mark.unit

@@ -46,20 +46,20 @@ def create_research_manager(llm):
 
         investment_debate_state = state["investment_debate_state"]
 
-        prompt = f"""As the Research Manager and debate facilitator, your role is to critically evaluate this round of debate and deliver a clear, actionable investment plan for the trader.
+        prompt = f"""As the Research Manager, judge this debate and decide whether the market misprices this instrument over the next 3 to 5 years.
 
 {instrument_context}
 
 ---
 
-**Rating Scale** (use exactly one):
-- **Buy**: Strong conviction in the bull thesis; recommend taking or growing the position
-- **Overweight**: Constructive view; recommend gradually increasing exposure
-- **Hold**: Balanced view; recommend maintaining the current position
-- **Underweight**: Cautious view; recommend trimming exposure
-- **Sell**: Strong conviction in the bear thesis; recommend exiting or avoiding the position
+**Rating Scale** (a verdict on mispricing over 3-5 years; use exactly one):
+- **Buy**: clearly undervalued, with a strong, well-evidenced variant view and a wide margin of safety. Rare.
+- **Overweight**: likely undervalued: a credible variant view on the fundamentals, with a margin of safety.
+- **Hold**: priced about right for its fundamentals, or the evidence is too thin to say otherwise. The default.
+- **Underweight**: likely overvalued: the price assumes more than the fundamentals plausibly deliver.
+- **Sell**: clearly overvalued or fundamentally impaired, well evidenced. Rare.
 
-The debate always contains conflicting arguments; deciding which side is stronger is the job, so conflict alone is not a reason to Hold. Commit to the side with the stronger case, sized by how decisively it wins. Choose Hold only when the evidence is still balanced after that weighing, or too thin to support a call; do not manufacture a direction to appear decisive. Weigh the bull and bear cases on their merits, independent of which side spoke first or last.{timing}
+Start from Hold: the market prices most stocks about right, and a rating off Hold claims it has this one wrong. Move off Hold only when you can state what the price assumes, where the fundamental evidence says otherwise, the margin of safety, and what would prove you wrong; if you cannot, the answer is Hold. A Hold takes the same work as any other rating: state what the price assumes and which evidence supports it and which cuts against it; "mixed fundamentals" alone is not a reason. Judge on fundamentals: what the price assumes (the fact sheet's reverse discounted cash flow), the business's record of growth, margins and returns on capital, its balance sheet and cash generation, and material news about the business. Price trends, technical indicators and social-media sentiment are for timing an entry, which is decided later; they are not evidence of mispricing and must not move the rating. Weigh the bull and bear cases on their merits, independent of which side spoke first or last.{timing}
 
 ---
 
@@ -68,11 +68,15 @@ The debate always contains conflicting arguments; deciding which side is stronge
 
 ## Output
 
-Write these sections, in this order, starting with the recommendation on its own line:
+Reason before you rate. Write these sections, in this order, and give the recommendation last:
 
-- **Recommendation**: exactly one of Buy / Overweight / Hold / Underweight / Sell
-- **Rationale**: which arguments decided it
-- **Strategic Actions**: concrete steps for the trader, sized against a standard allocation
+- **What the price assumes**: the growth, margins or returns the price implies over 3-5 years, in numbers (the reverse discounted cash flow where the fact sheet has one). Never a rating.
+- **Variant view**: where the evidence says the market is wrong, with that evidence, or "None"
+- **Margin of safety**: how far the price is from a supported value, or "None"
+- **What would prove it wrong**: observable facts
+- **Rationale**: which fundamental evidence decided it, and which debate arguments you accepted or rejected
+- **Strategic Actions**: how to hold the position over the horizon, against a standard allocation
+- **Recommendation**: exactly one of Buy / Overweight / Hold / Underweight / Sell, following from the sections above
 
 {NO_EXTERNAL_TOOLS}""" + get_language_instruction()
 

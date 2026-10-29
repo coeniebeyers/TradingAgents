@@ -65,6 +65,7 @@ def test_research_manager_prompt_states_constraint():
     llm = _capturing_llm(
         captured,
         ResearchPlan(
+            market_implied="m", variant_view="None", margin_of_safety="None", falsifiers="f",
             recommendation=PortfolioRating.BUY, rationale="x", strategic_actions="y"
         ),
     )
@@ -191,6 +192,7 @@ def _research_prompt(fact_sheet=None):
 
     captured = {}
     llm = _capturing_llm(captured, ResearchPlan(
+        market_implied="m", variant_view="None", margin_of_safety="None", falsifiers="f",
         recommendation=PortfolioRating.HOLD, rationale="x", strategic_actions="y"))
     state = {"company_of_interest": "META", "investment_debate_state": {
         "history": "Bear: Q3 EPS fell 69% YoY.", "bull_history": "", "bear_history": "", "current_response": "", "count": 1}}

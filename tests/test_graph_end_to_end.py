@@ -33,6 +33,7 @@ TEXT = "Report.\n\n**Rating**: Overweight\n\nFINAL TRANSACTION PROPOSAL: **BUY**
 
 STRUCTURED = {
     schemas.ResearchPlan: schemas.ResearchPlan(
+        market_implied="m", variant_view="None", margin_of_safety="None", falsifiers="f",
         recommendation=schemas.PortfolioRating.OVERWEIGHT, rationale="r", strategic_actions="a"),
     schemas.TraderProposal: schemas.TraderProposal(action=schemas.TraderAction.BUY, reasoning="r"),
     # The thesis quotes another party's rating; the run's rating is still the Research Manager's.

@@ -93,36 +93,62 @@ class TraderAction(StrEnum):
 
 
 class ResearchPlan(BaseModel):
-    """Structured investment plan produced by the Research Manager.
+    """Structured investment view produced by the Research Manager: a verdict on mispricing over 3-5 years.
 
-    Hand-off to the Trader: the recommendation pins the directional view,
-    the rationale captures which side of the bull/bear debate carried the
-    argument, and the strategic actions translate that into concrete
-    instructions the trader can execute against.
+    A rating other than Hold claims the market has the stock wrong, so the
+    schema asks first what the price assumes, what we believe differently and
+    on what evidence, the margin of safety and what would prove the view
+    wrong; the recommendation follows from those, and Hold is the answer when
+    there is no such case. The fields come in that order so the model reasons
+    before it rates.
     """
 
+    market_implied: str = Field(
+        description=(
+            "What the current price assumes about the business over the next "
+            "3-5 years: the growth, margins or returns implied (use the fact "
+            "sheet's reverse discounted cash flow where there is one), in numbers. "
+            "Never a rating word; required for a Hold too."
+        ),
+    )
+    variant_view: str = Field(
+        description=(
+            "Where the evidence says the market is wrong about the fundamentals, "
+            "and the evidence for it. Write 'None' when the price looks about "
+            "right or the evidence is too thin: that is a Hold."
+        ),
+    )
+    margin_of_safety: str = Field(
+        description=(
+            "How far the price is from a value the fundamentals support, and how "
+            "sure that is; 'None' when there is no variant view."
+        ),
+    )
+    falsifiers: str = Field(
+        description="What would prove the view wrong over the next 3-5 years, as observable facts.",
+    )
     recommendation: PortfolioRating = Field(
         description=(
-            "The investment recommendation. Exactly one of Buy / Overweight / "
-            "Hold / Underweight / Sell. Conflicting arguments alone are not a "
-            "reason to Hold: commit to the stronger side, sized by how "
-            "decisively it wins. Choose Hold only when the evidence is still "
-            "balanced after weighing, or too thin to support a call."
+            "Exactly one of Buy / Overweight / Hold / Underweight / Sell, as a "
+            "verdict on mispricing over 3-5 years. Hold is the default: the "
+            "market prices most stocks about right. Overweight or Underweight "
+            "need a credible variant view with a margin of safety; Buy or Sell "
+            "a strong, well-evidenced one, which is rare."
         ),
     )
     rationale: str = Field(
         description=(
-            "Conversational summary of the key points from both sides of the "
-            "debate, ending with which arguments led to the recommendation. "
-            "Speak naturally, as if to a teammate."
+            "Which fundamental evidence decided the recommendation, and which "
+            "debate arguments it accepted or rejected. Speak naturally, as if "
+            "to a teammate."
         ),
     )
     strategic_actions: str = Field(
         description=(
-            "Concrete steps for the trader to implement the recommendation, "
-            "including sizing guidance relative to a standard allocation. The "
-            "research team does not see the caller's holdings; the trader and "
-            "portfolio manager apply the actual position."
+            "How the position should be held over the horizon, relative to a "
+            "standard allocation. The research team does not see the caller's holdings; "
+            "entry timing and actual position size are decided later by the trader "
+            "and portfolio manager."
         ),
     )
 
@@ -131,6 +157,14 @@ def render_research_plan(plan: ResearchPlan) -> str:
     """Render a ResearchPlan to markdown for storage and the trader's prompt context."""
     return "\n".join([
         f"**Recommendation**: {plan.recommendation.value}",
+        "",
+        f"**What the price assumes**: {plan.market_implied}",
+        "",
+        f"**Variant view**: {plan.variant_view}",
+        "",
+        f"**Margin of safety**: {plan.margin_of_safety}",
+        "",
+        f"**What would prove it wrong**: {plan.falsifiers}",
         "",
         f"**Rationale**: {plan.rationale}",
         "",
