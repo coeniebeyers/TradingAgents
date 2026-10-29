@@ -16,12 +16,15 @@ from tradingagents.agents.structured import (
 )
 
 _RECOMMENDATION = re.compile(r"^\W*recommendation\W*:\W*(buy|overweight|hold|underweight|sell)\b", re.I | re.M)
+# A free-text answer that ends on a "## Recommendation" heading with the rating alone below it.
+_RECOMMENDATION_HEADING = re.compile(
+    r"^#+\s*\W*recommendation\W*\s*\n\s*\W*(buy|overweight|hold|underweight|sell)\W*\s*$", re.I | re.M)
 
 
 def research_rating(plan: str) -> str:
-    """The Research Manager's rating, which is the run's: its labelled recommendation, else the
-    rating its free text opens with or labels, else REVIEW."""
-    m = _RECOMMENDATION.search(plan or "")
+    """The Research Manager's rating, which is the run's: its labelled recommendation or recommendation
+    heading, else the rating its free text opens with or labels, else REVIEW."""
+    m = _RECOMMENDATION.search(plan or "") or _RECOMMENDATION_HEADING.search(plan or "")
     return m.group(1).capitalize() if m else parse_rating(plan or "", RATING_REVIEW)
 
 

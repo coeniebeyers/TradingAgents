@@ -46,6 +46,8 @@ def _pm(rating, structured=True, answer="Hold the position; add on a pullback.")
     ("**Recommendation**: Overweight\n\n**Rationale**: the bear case on Hold-worthy valuation lost.", "Overweight"),
     ("Underweight\n\nThe bear case carried it.", "Underweight"),          # free text opening with the rating
     ("Rationale: ... Strategic Actions: ...", "REVIEW"),                   # the empty template seen in run 178
+    ("## What the price assumes\n\nHold-worthy? 28% FCF growth.\n\n## Recommendation\n\nHold\n", "Hold"),  # run 239
+    ("## Recommendation\n\nThe bull case on Overweight lost.", "REVIEW"),  # a heading over prose is no call
 ])
 def test_the_research_manager_s_rating_is_read_from_its_plan(plan, rating):
     assert research_rating(plan) == rating
