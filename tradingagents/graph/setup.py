@@ -122,13 +122,16 @@ class GraphSetup:
                 - "fundamentals": Fundamentals analyst
             memory_node: Node that settles past decisions and returns the run's
                 ``past_context``. It runs alongside the analysts.
-            pipeline: "full", or "research" to end at the Research Manager's rating:
+            pipeline: "full"; "research" to end at the Research Manager's rating:
                 no trader, risk team or Portfolio Manager, and so no memory log step,
-                whose lessons only the Portfolio Manager reads.
+                whose lessons only the Portfolio Manager reads; or "plan" to start
+                from a stored research record: the analysts (for timing), then the
+                trader, risk team and Portfolio Manager, with no research debate.
         """
-        if pipeline not in ("full", "research"):
-            raise ValueError(f"pipeline must be 'full' or 'research', got {pipeline!r}")
+        if pipeline not in ("full", "research", "plan"):
+            raise ValueError(f"pipeline must be 'full', 'research' or 'plan', got {pipeline!r}")
         research_only = pipeline == "research"
+        plan_only = pipeline == "plan"
         plan = build_analyst_execution_plan(selected_analysts)
 
         analyst_factories = {
@@ -154,9 +157,10 @@ class GraphSetup:
             workflow.add_node(spec.agent_node,
                               _analyst_graph(spec, analyst_factories[spec.key](), self.max_tool_rounds))
 
-        workflow.add_node("Bull Researcher", bull_researcher_node)
-        workflow.add_node("Bear Researcher", bear_researcher_node)
-        workflow.add_node("Research Manager", research_manager_node)
+        if not plan_only:
+            workflow.add_node("Bull Researcher", bull_researcher_node)
+            workflow.add_node("Bear Researcher", bear_researcher_node)
+            workflow.add_node("Research Manager", research_manager_node)
         if not research_only:
             workflow.add_node("Trader", trader_node)
             workflow.add_node("Aggressive Analyst", aggressive_analyst)
@@ -168,15 +172,16 @@ class GraphSetup:
         # every one of them has filed its report. The memory log settles past
         # decisions alongside them: only the Portfolio Manager reads its lessons.
         first_steps = [spec.agent_node for spec in plan.specs]
-        if memory_node is not None and not research_only:
+        if memory_node is not None and pipeline == "full":
             workflow.add_node("Memory Log", memory_node)
             first_steps.append("Memory Log")
         for node in first_steps:
             workflow.add_edge(START, node)
-        workflow.add_edge(first_steps, "Bull Researcher")
+        # A plan starts from the stored research record, so the analysts hand straight to the trader.
+        workflow.add_edge(first_steps, "Trader" if plan_only else "Bull Researcher")
 
         # Both research-debate edges share the complete DEBATE_PATH_MAP (#1088).
-        for debate_node in ("Bull Researcher", "Bear Researcher"):
+        for debate_node in () if plan_only else ("Bull Researcher", "Bear Researcher"):
             workflow.add_conditional_edges(
                 debate_node,
                 self.conditional_logic.should_continue_debate,
@@ -185,7 +190,8 @@ class GraphSetup:
         if research_only:
             workflow.add_edge("Research Manager", END)
             return workflow
-        workflow.add_edge("Research Manager", "Trader")
+        if not plan_only:
+            workflow.add_edge("Research Manager", "Trader")
         workflow.add_edge("Trader", "Aggressive Analyst")
         # All three risk edges share the complete RISK_ANALYSIS_PATH_MAP (#1088).
         for risk_node in ("Aggressive Analyst", "Conservative Analyst", "Neutral Analyst"):

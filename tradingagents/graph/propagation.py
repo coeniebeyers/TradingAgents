@@ -20,6 +20,7 @@ class Propagator:
         portfolio_context: str = "",
         fact_sheet: str = "",
         events: str = "",
+        research: dict | None = None,
     ) -> dict[str, Any]:
         """Create the initial state for the agent graph.
 
@@ -28,7 +29,11 @@ class Propagator:
         ``TradingAgentsGraph.resolve_instrument_context``). When empty, agents
         fall back to ticker-only context via
         ``get_instrument_context_from_state``.
+
+        ``research`` is a stored research record (``rating``, ``plan``) a "plan" run starts from, in place of the
+        research debate it skips.
         """
+        research = research or {}
         return {
             "messages": [("human", company_name)],
             "company_of_interest": company_name,
@@ -45,10 +50,12 @@ class Propagator:
                     "bull_history": "",
                     "bear_history": "",
                     "history": "",
-                    "current_response": "",
+                    "current_response": research.get("plan", ""),
                     "count": 0,
                 }
             ),
+            **({"investment_plan": research["plan"], "research_rating": research.get("rating") or "REVIEW"}
+               if research.get("plan") else {}),
             "risk_debate_state": RiskDebateState(
                 {
                     "aggressive_history": "",

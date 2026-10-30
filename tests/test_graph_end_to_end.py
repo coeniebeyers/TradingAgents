@@ -409,3 +409,28 @@ def test_a_research_run_ends_at_the_research_managers_vote(tmp_path, monkeypatch
     text = report.read_text()
     assert "- Rating: Overweight" in text and "Overweight, Overweight, Overweight" in text
     assert not (tmp_path / "report" / "5_portfolio").exists()
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("structured", [False, True], ids=["free-text", "structured"])
+def test_a_plan_run_starts_from_the_research_record_and_keeps_its_rating(tmp_path, monkeypatch, offline, structured):
+    # Stage 2 plans how to act on a stored research record: no research debate, and the rating stays the record's.
+    graph = _graph(tmp_path, monkeypatch, ScriptedModel(structured=structured), pipeline="plan")
+    nodes = set(graph.graph.get_graph().nodes)
+    assert {"Trader", "Portfolio Manager"} <= nodes
+    assert not {"Bull Researcher", "Bear Researcher", "Research Manager", "Memory Log"} & nodes
+
+    record = {"rating": "Underweight", "plan": "**Recommendation**: Underweight\n\n**Rationale**: priced for +41% FCF growth."}
+    state, signal = graph.propagate("NVDA", TRADE_DATE, research=record)
+
+    assert signal == state["final_rating"] == "Underweight"
+    assert state["investment_plan"] == record["plan"]
+    assert state["final_trade_decision"] and state["trader_investment_plan"]
+    assert not (tmp_path / "log.md").exists() or "NVDA" not in (tmp_path / "log.md").read_text()
+
+
+@pytest.mark.unit
+def test_a_plan_run_without_a_research_record_is_refused(tmp_path, monkeypatch, offline):
+    graph = _graph(tmp_path, monkeypatch, ScriptedModel(structured=True), pipeline="plan")
+    with pytest.raises(ValueError, match="starts from a research record"):
+        graph.propagate("NVDA", TRADE_DATE)
