@@ -252,6 +252,17 @@ def render_trader_proposal(proposal: TraderProposal) -> str:
 # ---------------------------------------------------------------------------
 
 
+class PlanAction(StrEnum):
+    """What to do with the position now."""
+
+    OPEN = "Open"
+    ADD = "Add"
+    HOLD = "Hold"
+    TRIM = "Trim"
+    EXIT = "Exit"
+    STAY_OUT = "Stay out"
+
+
 class PortfolioDecision(BaseModel):
     """Structured output produced by the Portfolio Manager: the plan for acting on the rating.
 
@@ -274,6 +285,27 @@ class PortfolioDecision(BaseModel):
             "incorporate them; otherwise rely solely on the current analysis."
         ),
     )
+    action: PlanAction | None = Field(
+        default=None,
+        description="What to do with the position now: Open, Add, Hold, Trim, Exit, or Stay out (not held, not opening).",
+    )
+    target_weight_pct: float | None = Field(
+        default=None,
+        description="The position's target share of the book, in percent (the sizing brief's, when there is one).",
+    )
+    entry: str | None = Field(
+        default=None,
+        description="How and when to act: now, staged over a stated period, on a pullback to a level, or after an event.",
+    )
+    levels: str | None = Field(
+        default=None,
+        description="The prices at which to add, trim or exit, in the instrument's quote currency.",
+    )
+    funding: str | None = Field(
+        default=None,
+        description="Where the money for an add comes from (cash, or which holdings to trim and by how much), "
+                    "or what a trim frees up; 'None needed' for a hold.",
+    )
     price_target: float | None = Field(
         default=None,
         description="Optional target price in the instrument's quote currency.",
@@ -283,7 +315,7 @@ class PortfolioDecision(BaseModel):
         description="Optional recommended holding period, e.g. '3-6 months'.",
     )
 
-    @field_validator("price_target", mode="before")
+    @field_validator("price_target", "target_weight_pct", mode="before")
     @classmethod
     def _nullish_float_to_none(cls, v):
         return _coerce_optional_float(v)
@@ -306,6 +338,13 @@ def render_pm_decision(decision: PortfolioDecision, rating: str) -> str:
     ]
     # Named even when absent: a missing line reads as a field nobody asked for,
     # so a reader cannot tell "no target" from "target not reported".
+    # The plan's fields, when the decision states them (a stage-2 plan does; older decisions did not).
+    target_weight = f"{decision.target_weight_pct:g}% of the book" if decision.target_weight_pct is not None else None
+    for label, value in (("Action", decision.action.value if decision.action else None),
+                         ("Target Weight", target_weight), ("Entry", decision.entry), ("Levels", decision.levels),
+                         ("Funding", decision.funding)):
+        if value:
+            parts.extend(["", f"**{label}**: {value}"])
     target = decision.price_target if decision.price_target is not None else "not provided"
     parts.extend(["", f"**Price Target**: {target}"])
     parts.extend(["", f"**Time Horizon**: {decision.time_horizon or 'not provided'}"])

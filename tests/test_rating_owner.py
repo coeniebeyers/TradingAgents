@@ -100,3 +100,34 @@ def test_the_debaters_argue_from_the_fact_sheet(side):
     text = _debater_prompt(side, "- Diluted EPS 3.83; vs 1.05 a year earlier (+264.8% year on year)")
     assert "+264.8% year on year" in text and "the fact sheet is right" in text
     assert _debater_prompt(side) == _debater_prompt(side, "") and "Fact sheet" not in _debater_prompt(side)
+
+
+@pytest.mark.unit
+def test_with_a_sizing_brief_the_portfolio_manager_plans_the_timing_not_the_size():
+    from tradingagents.agents.schemas import PlanAction, render_pm_decision
+    from tradingagents.portfolio import SIZING_HEADER
+
+    captured = {}
+    llm = MagicMock()
+    bound = MagicMock()
+    bound.invoke.side_effect = lambda p: captured.setdefault("prompt", p) and PortfolioDecision(
+        executive_summary="Trim to 5% over two weeks.", investment_thesis="t", action=PlanAction.TRIM,
+        target_weight_pct=5, entry="staged over two weeks", levels="trim faster above 80", funding="frees about 7,000")
+    llm.with_structured_output.return_value = bound
+    state = {"company_of_interest": "PYPL", "risk_debate_state": RISK, "investment_plan": "plan",
+             "trader_investment_plan": "trader plan", "research_rating": "Underweight",
+             "portfolio_context": f"Portfolio at the analysis date:\n- Current position\n\n{SIZING_HEADER}\nTarget 5.0%"}
+    out = create_portfolio_manager(llm)(state)
+    assert "**Sizing is decided**" in captured["prompt"] and "do not change the target weight" in captured["prompt"]
+    assert "- **Funding**: where the money comes from" in captured["prompt"]
+    text = out["final_trade_decision"]
+    assert "**Action**: Trim" in text and "**Target Weight**: 5% of the book" in text
+    assert "**Funding**: frees about 7,000" in text and out["final_rating"] == "Underweight"
+    plain = render_pm_decision(PortfolioDecision(executive_summary="e", investment_thesis="t"), "Hold")
+    assert not any(f"**{label}**" in plain for label in ("Action", "Target Weight", "Entry", "Levels", "Funding"))
+
+
+@pytest.mark.unit
+def test_without_a_sizing_brief_the_prompt_is_unchanged():
+    _, prompt = _pm("Hold")
+    assert "Sizing is decided" not in prompt and "- **Action**" not in prompt

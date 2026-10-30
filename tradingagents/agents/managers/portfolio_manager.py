@@ -21,6 +21,7 @@ from tradingagents.agents.context import (
 from tradingagents.agents.rating import RATING_REVIEW
 from tradingagents.agents.schemas import PortfolioDecision, render_pm_decision
 from tradingagents.agents.structured import NO_EXTERNAL_TOOLS, bind_structured, invoke_structured
+from tradingagents.portfolio import SIZING_HEADER
 
 
 def create_portfolio_manager(llm):
@@ -59,6 +60,26 @@ def create_portfolio_manager(llm):
             else ""
         )
 
+        # A stage-2 plan comes with a sizing brief computed from the ratings and the book: the size is settled,
+        # and the plan is how and when to get there.
+        if SIZING_HEADER in portfolio_context:
+            sizing_line = ("\n**Sizing is decided**: the portfolio block's sizing brief sets this position's target weight"
+                           " and how the book funds a change. Your job is the action, the entry timing (the market and"
+                           " sentiment reports and the scheduled events are for this), the levels, and the funding"
+                           " steps. You may stage or delay a change for timing and must say why; do not change the"
+                           " target weight.\n")
+            output = """- **Action**: one of Open / Add / Hold / Trim / Exit / Stay out
+- **Target Weight**: the brief's target, in percent of the book
+- **Entry**: how and when to act (now, staged over a stated period, on a pullback to a level, after an event)
+- **Levels**: the prices at which to add, trim or exit
+- **Funding**: where the money comes from, or what a trim frees up
+- **Executive Summary**: the plan in two to four sentences
+- **Investment Thesis**: the evidence the plan rests on, and what would change it"""
+        else:
+            sizing_line = ""
+            output = """- **Executive Summary**: the plan and how to act on it
+- **Investment Thesis**: the evidence the plan rests on, and what would change it"""
+
         prompt = f"""As the Portfolio Manager, turn the research view into the plan for this position, using the risk analysts' debate.
 
 {instrument_context}
@@ -68,7 +89,7 @@ def create_portfolio_manager(llm):
 ---
 
 {rating_line}
-
+{sizing_line}
 **Context:**
 - Research Manager's investment plan: **{research_plan}**
 - Trader's transaction proposal: **{trader_plan}**
@@ -84,8 +105,7 @@ Ground every conclusion in specific evidence from the analysts. Plan for the act
 
 Write these sections, in this order:
 
-- **Executive Summary**: the plan and how to act on it
-- **Investment Thesis**: the evidence the plan rests on, and what would change it
+{output}
 
 {NO_EXTERNAL_TOOLS}{get_language_instruction()}"""
 

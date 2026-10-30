@@ -237,3 +237,22 @@ def test_cli_passes_a_valid_portfolio_into_the_run(tmp_path, monkeypatch):
 
     assert result.exit_code == 0
     assert ran[0]["portfolio"].position_in("AAPL").quantity == 120
+
+
+@pytest.mark.unit
+def test_a_valued_book_shows_each_weight_and_the_sizing_brief():
+    book = PortfolioContext.model_validate({
+        "cash": 0.0, "currency": "USD", "sizing": "Target 5.0% of the book (Underweight); now 12.0%: trim about 7,000.",
+        "positions": [{"ticker": "PYPL", "quantity": 75, "market_value": 12000.0},
+                      {"ticker": "META", "quantity": 33, "market_value": 88000.0}]})
+    text = book.render("PYPL")
+    assert "worth 12,000 (12.0% of the book)" in text and "META 33 (88.0%)" in text
+    assert "Book value, positions and cash: 100,000" in text
+    assert "Sizing (computed by code from the ratings and the book):\nTarget 5.0%" in text
+
+
+@pytest.mark.unit
+def test_a_book_missing_a_value_shows_no_weights_rather_than_wrong_ones():
+    book = PortfolioContext.model_validate({"cash": 0.0, "positions": [
+        {"ticker": "PYPL", "quantity": 75, "market_value": 12000.0}, {"ticker": "META", "quantity": 33}]})
+    assert "% of the book" not in book.render("PYPL")
