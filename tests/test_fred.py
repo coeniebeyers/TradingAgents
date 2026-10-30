@@ -141,7 +141,20 @@ class FredFormattingTests(unittest.TestCase):
         no_series = {"seriess": []}
         with mock.patch.object(fred, "_request", side_effect=_request_stub(meta=no_series)):
             out = fred.get_macro_data("totally_unknown_xyz", "2025-09-30", 30)
-        self.assertIn("not found", out)
+        self.assertIn("FRED has no series 'TOTALLY_UNKNOWN_XYZ'", out)
+        self.assertIn("10y_treasury", out)  # the aliases to pick from instead
+
+    def test_a_series_fred_rejects_lists_the_aliases_instead_of_failing(self):
+        # FRED 400s an ID it doesn't have ("DXY"); left as an error, the analyst kept guessing other IDs.
+        rejected = ValueError("FRED request failed: Bad Request.  The series does not exist in ALFRED but may exist in FRED.")
+        with mock.patch.object(fred, "_request", side_effect=rejected):
+            out = fred.get_macro_data("IPIND", "2025-09-30", 30)
+        self.assertTrue(out.startswith("FRED has no series 'IPIND'. Don't guess other IDs"))
+        self.assertIn("industrial_production", out)
+
+    def test_aliases_written_without_separators_resolve(self):
+        self.assertEqual(fred._resolve_series_id("industrialproduction"), "INDPRO")
+        self.assertEqual(fred._resolve_series_id("dxy"), "DTWEXBGS")
 
     def test_long_series_is_truncated_but_change_uses_full_range(self):
         # Build > MAX_ROWS observations deterministically.

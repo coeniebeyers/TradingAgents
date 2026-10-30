@@ -14,7 +14,8 @@ read exactly what the live run read, so a caller can hand a run the data it coll
 - Prediction markets: a topic the collector asked about.
 - A settled "no data" (no statements for a fund, no headlines that week) is served as collected; a throttle or
   an error is fetched again.
-- Macro series stay live: FRED serves each series as known on the date, so the answer is already fixed.
+- Macro series: the stored year of the series (an alias or its FRED ID), for any window up to a year; the collector
+  asks FRED for each as known on the date, so it is the answer a live call would give, without the call.
 
 A call the snapshot cannot answer is fetched live and recorded in ``misses``, so the run can say which inputs were
 not the collected ones. The file::
@@ -34,7 +35,7 @@ from datetime import date
 from tradingagents.dataflows.config import get_config
 
 # Methods answered by their fixed source rather than from the snapshot, and so never counted as misses.
-LIVE_BY_DESIGN = {"get_macro_indicators", "get_stock_data", "get_indicators"}
+LIVE_BY_DESIGN = {"get_stock_data", "get_indicators"}
 
 _lock = threading.Lock()
 _loaded: dict[str, "Snapshot"] = {}
@@ -112,6 +113,8 @@ class Snapshot:
                 head, blocks = _blocks(stored)
                 stored = "\n".join([head, *blocks[:int(limit)]]) if head else "\n".join(blocks[:int(limit)])
             return stored
+        if method == "get_macro_indicators" and len(a) >= 2 and a[1] == self.as_of:
+            return self.macro(str(a[0]), a[2] if len(a) > 2 else None)
         if method == "get_prediction_markets" and len(a) >= 1:
             return self._find("get_prediction_markets", "", topic=a[0])
         return None
@@ -130,6 +133,25 @@ class Snapshot:
         dated = lambda b: re.search(r"\(source: [^)]*?, (\d{4}-\d\d-\d\d)\)", b.splitlines()[0])
         kept = [b for b in blocks if not dated(b) or dated(b).group(1) >= start]
         return "\n".join([head, *kept]) if head else "\n".join(kept)
+
+    def macro(self, indicator: str, look_back_days) -> str | None:
+        """The stored series, asked for by alias or FRED ID, when its stored window covers the one asked for."""
+        from tradingagents.dataflows.vendors.fred import _resolve_series_id
+
+        try:
+            wanted = _resolve_series_id(indicator)
+        except ValueError:
+            return None
+        for c in self.calls:
+            if c["tool"] != "get_macro_indicators" or c["status"] != "ok":
+                continue
+            try:
+                held = _resolve_series_id(str(c["args"].get("indicator", "")))
+            except ValueError:
+                continue
+            if held == wanted and int(look_back_days or 365) <= int(c["args"].get("look_back_days") or 365):
+                return c["output"]
+        return None
 
     def stocktwits(self, ticker: str) -> str | None:
         return self._find("stocktwits", ticker) if ticker.upper() == self.ticker else None

@@ -38,6 +38,8 @@ def _calls():
          "output": "<no StockTwits messages found for $SYG.JO>"},
         {"ticker": "", "tool": "get_global_news", "args": {"curr_date": AS_OF, "look_back_days": 7, "limit": 50},
          "status": "ok", "output": "## Global Market News\n\n### One (source: A)\nLink: x\n\n### Two (source: B)\nLink: y\n"},
+        {"ticker": "", "tool": "get_macro_indicators", "args": {"indicator": "10y_treasury", "curr_date": AS_OF,
+         "look_back_days": 365}, "status": "ok", "output": "## FRED: Market Yield on U.S. Treasury Securities (DGS10)"},
         {"ticker": "", "tool": "get_prediction_markets", "args": {"topic": "Fed rate cut", "limit": 10},
          "status": "ok", "output": "Polymarket: Fed rate cut markets"},
         {"ticker": "SYG.JO", "tool": "get_insider_transactions", "args": {}, "status": "unavailable",
@@ -75,10 +77,20 @@ def test_what_the_snapshot_lacks_is_fetched_live_and_recorded(snap_config, monke
     assert route_to_vendor("get_insider_transactions", "SYG.JO", AS_OF) == "live get_insider_transactions"
     assert route_to_vendor("get_fundamentals", "SYG.JO", "2026-10-20") == "live get_fundamentals"
     assert route_to_vendor("get_prediction_markets", "Strait of Hormuz", 6, AS_OF) == "live get_prediction_markets"
-    # Macro series are point-in-time from FRED itself: live by design, not a miss.
+    # A series the collector didn't fetch, or a window longer than the stored year.
     assert route_to_vendor("get_macro_indicators", "vix", AS_OF, 90) == "live get_macro_indicators"
+    assert route_to_vendor("get_macro_indicators", "10y_treasury", AS_OF, 730) == "live get_macro_indicators"
     assert [m["method"] for m in snapshot.active().misses] == [
-        "get_insider_transactions", "get_fundamentals", "get_prediction_markets"]
+        "get_insider_transactions", "get_fundamentals", "get_prediction_markets",
+        "get_macro_indicators", "get_macro_indicators"]
+
+
+@pytest.mark.unit
+def test_a_collected_macro_series_is_served_by_alias_or_fred_id_for_any_window_up_to_a_year(snap_config, monkeypatch):
+    monkeypatch.setattr("tradingagents.dataflows.router._route", lambda *a, **k: pytest.fail("fetched live"))
+    for indicator, days in (("10y_treasury", 90), ("DGS10", None), ("10ytreasury", 365)):
+        assert route_to_vendor("get_macro_indicators", indicator, AS_OF, days).endswith("(DGS10)")
+    assert snapshot.active().misses == []
 
 
 @pytest.mark.unit

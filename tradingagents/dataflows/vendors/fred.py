@@ -49,6 +49,9 @@ MACRO_SERIES = {
     "2y_treasury": "DGS2",
     "10y_treasury": "DGS10",
     "30y_treasury": "DGS30",
+    "3m_treasury": "DGS3MO",
+    "1y_treasury": "DGS1",
+    "5y_treasury": "DGS5",
     "10y_2y_spread": "T10Y2Y",
     "yield_curve": "T10Y2Y",
     # Inflation
@@ -57,6 +60,8 @@ MACRO_SERIES = {
     "pce": "PCEPI",
     "core_pce": "PCEPILFE",
     "inflation_expectations": "T10YIE",
+    "ppi": "PPIACO",
+    "producer_price_index": "PPIACO",
     # Growth & output
     "real_gdp": "GDPC1",
     "gdp": "GDP",
@@ -72,6 +77,13 @@ MACRO_SERIES = {
     "money_supply": "M2SL",
     "vix": "VIXCLS",
     "dollar_index": "DTWEXBGS",
+    "dxy": "DTWEXBGS",
+    "wti_oil": "DCOILWTICO",
+    "oil": "DCOILWTICO",
+    "brent_oil": "DCOILBRENTEU",
+    "high_yield_spread": "BAMLH0A0HYM2",
+    "bbb_spread": "BAMLC0A4CBBB",
+    "consumer_credit": "TOTALSL",
     # Sentiment & housing
     "consumer_sentiment": "UMCSENT",
     "housing_starts": "HOUST",
@@ -87,7 +99,10 @@ MACRO_SERIES = {
     "germany_10y": "IRLTLT01DEM156N",
     "france_10y": "IRLTLT01FRM156N",
     "eur_usd": "DEXUSEU",
+    "usd_jpy": "DEXJPUS",
 }
+# The same aliases written without separators ("industrialproduction", "10ytreasury"), as the model sometimes asks.
+_SQUASHED = {alias.replace("_", ""): sid for alias, sid in MACRO_SERIES.items()}
 
 
 class FredNotConfiguredError(VendorNotConfiguredError):
@@ -121,6 +136,8 @@ def _resolve_series_id(indicator: str) -> str:
     key = indicator.strip().lower().replace(" ", "_").replace("-", "_")
     if key in MACRO_SERIES:
         return MACRO_SERIES[key]
+    if key.replace("_", "") in _SQUASHED:
+        return _SQUASHED[key.replace("_", "")]
     candidate = indicator.strip().upper()
     # FRED series IDs never contain whitespace and are short; reject anything
     # else (a descriptive phrase the LLM passed) rather than 400ing the API.
@@ -211,11 +228,20 @@ def get_macro_data(
     except ValueError as e:
         return f"FRED: {e}"
 
-    meta = _request("series", {"series_id": series_id, **realtime}).get("seriess") or []
+    # A series FRED doesn't have (an ID the model guessed, "DXY", "IPIND") 400s.
+    # Answer with the aliases rather than an error, so the analyst picks one
+    # instead of guessing the next ID: unanswered, it kept guessing until its
+    # tool rounds ran out.
+    try:
+        meta = _request("series", {"series_id": series_id, **realtime}).get("seriess") or []
+    except ValueError as e:
+        if "does not exist" not in str(e):
+            raise
+        meta = []
     if not meta:
         return (
-            f"FRED series '{series_id}' not found. Pass a known alias "
-            f"(e.g. 'cpi', 'unemployment') or a valid FRED series ID."
+            f"FRED has no series '{series_id}'. Don't guess other IDs; use one of these aliases: "
+            f"{', '.join(MACRO_SERIES)}."
         )
     info = meta[0]
     title = info.get("title", series_id)
