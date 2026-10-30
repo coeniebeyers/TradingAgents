@@ -152,6 +152,12 @@ class FredFormattingTests(unittest.TestCase):
         self.assertTrue(out.startswith("FRED has no series 'IPIND'. Don't guess other IDs"))
         self.assertIn("industrial_production", out)
 
+    def test_a_malformed_series_id_lists_the_aliases_too(self):
+        rejected = ValueError("FRED request failed: Bad Request.  Invalid value for variable series_id.")
+        with mock.patch.object(fred, "_request", side_effect=rejected):
+            out = fred.get_macro_data("DGS10/DGS2", "2025-09-30", 30)
+        self.assertTrue(out.startswith("FRED has no series 'DGS10/DGS2'"))
+
     def test_aliases_written_without_separators_resolve(self):
         self.assertEqual(fred._resolve_series_id("industrialproduction"), "INDPRO")
         self.assertEqual(fred._resolve_series_id("dxy"), "DTWEXBGS")

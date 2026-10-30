@@ -235,7 +235,7 @@ def get_macro_data(
     try:
         meta = _request("series", {"series_id": series_id, **realtime}).get("seriess") or []
     except ValueError as e:
-        if "does not exist" not in str(e):
+        if "does not exist" not in str(e) and "series_id" not in str(e):
             raise
         meta = []
     if not meta:
