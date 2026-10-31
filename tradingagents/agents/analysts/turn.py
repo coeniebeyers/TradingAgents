@@ -9,6 +9,15 @@ WRAP_UP = (
     "now from the tool results above, and say which data you could not retrieve."
 )
 
+# Said to an analyst whose last turn ended without tool calls but with only a line ("I now have a complete dataset.
+# Let me compile the report."): the report it announced is what is wanted.
+WRITE_IT = (
+    "That was a note, not your report. Write your full final report now from the tool results above, "
+    "and say which data you could not retrieve."
+)
+# A report shorter than this is taken for such a note.
+STUB_CHARS = 400
+
 
 def take_turn(prompt, llm, tools, messages):
     """The analyst's reply and its report, which stays empty while it calls tools.
@@ -17,7 +26,7 @@ def take_turn(prompt, llm, tools, messages):
     whatever it is told. Its earlier calls and their results reach it as text,
     since a provider may refuse a history holding tool calls when none are bound.
     """
-    if messages and isinstance(messages[-1], HumanMessage) and messages[-1].content == WRAP_UP:
+    if messages and isinstance(messages[-1], HumanMessage) and messages[-1].content in (WRAP_UP, WRITE_IT):
         # The prompt lists the tools it offers; a model told of tools it cannot
         # call may still try, and some providers then answer with nothing.
         prompt = prompt.partial(tool_names="none; your tool rounds are spent")

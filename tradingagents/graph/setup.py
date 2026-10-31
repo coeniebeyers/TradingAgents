@@ -20,7 +20,7 @@ from tradingagents.agents import (
     create_sentiment_analyst,
     create_trader,
 )
-from tradingagents.agents.analysts.turn import WRAP_UP
+from tradingagents.agents.analysts.turn import STUB_CHARS, WRAP_UP, WRITE_IT
 from tradingagents.agents.state import AgentState
 
 from .analyst_execution import build_analyst_execution_plan
@@ -45,11 +45,6 @@ RISK_ANALYSIS_PATH_MAP = {
 }
 
 
-def _tools_or_done(state) -> str:
-    """Route an analyst's turn: run its tool calls, or finish with its report."""
-    return "tools" if state["messages"][-1].tool_calls else END
-
-
 def _analyst_graph(spec, agent, max_tool_rounds: int):
     """One analyst as a graph of its own: the model and its tools, on a private message history.
 
@@ -57,7 +52,9 @@ def _analyst_graph(spec, agent, max_tool_rounds: int):
     same key, and its tool calls never reach the other analysts' messages. After
     ``max_tool_rounds`` rounds of tool calls it is told to write its report, and
     that turn ends it whatever it answers, so a model that keeps calling tools
-    cannot run the graph into its recursion limit (#1420).
+    cannot run the graph into its recursion limit (#1420). A turn that stops
+    calling tools with only a line ("Let me compile the report.") is asked once
+    for the report it announced, without tools, and that answer stands.
     """
     output = TypedDict(f"{spec.key.capitalize()}Report", {spec.report_key: str})
     graph = StateGraph(AgentState, output_schema=output)
@@ -76,6 +73,19 @@ def _analyst_graph(spec, agent, max_tool_rounds: int):
     def more_or_wrap_up(state) -> str:
         return "wrap_up" if rounds(state["messages"]) >= max_tool_rounds else "agent"
 
+    def done_or_write_it(state) -> str:
+        last = state["messages"][-1]
+        if last.tool_calls:
+            return "tools"
+        text = last.content if isinstance(last.content, str) else ""
+        asked = any(isinstance(m, HumanMessage) and m.content in (WRAP_UP, WRITE_IT) for m in state["messages"])
+        return "write_it" if len(text.strip()) < STUB_CHARS and not asked else END
+
+    def write_it(state):
+        logger.warning("%s ended with a note, not a report (%r); asking for the report",
+                       spec.agent_node, str(state["messages"][-1].content)[:120])
+        return agent({**state, "messages": [*state["messages"], HumanMessage(WRITE_IT)]})
+
     def wrap_up(state):
         repeated = ", ".join(f"{name} x{n}" for name, n in Counter(calls(state["messages"])).most_common())
         logger.warning("%s used its %d tool rounds (%s); asking for its report",
@@ -84,9 +94,11 @@ def _analyst_graph(spec, agent, max_tool_rounds: int):
 
     graph.add_node("tools", ToolNode(list(spec.tools)))
     graph.add_node("wrap_up", wrap_up)
-    graph.add_conditional_edges("agent", _tools_or_done, ["tools", END])
+    graph.add_node("write_it", write_it)
+    graph.add_conditional_edges("agent", done_or_write_it, ["tools", "write_it", END])
     graph.add_conditional_edges("tools", more_or_wrap_up, ["agent", "wrap_up"])
     graph.add_edge("wrap_up", END)
+    graph.add_edge("write_it", END)
     return graph.compile()
 
 

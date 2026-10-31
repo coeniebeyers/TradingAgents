@@ -20,6 +20,7 @@ from pydantic import Field
 
 from tradingagents.agents import context, schemas
 from tradingagents.agents.analysts import sentiment_analyst
+from tradingagents.agents.analysts.turn import WRITE_IT
 from tradingagents.dataflows import router
 from tradingagents.dataflows.vendors.yahoo import market as yahoo_market, snapshot
 from tradingagents.default_config import DEFAULT_CONFIG
@@ -283,6 +284,38 @@ def test_the_last_turn_is_offered_no_tools_and_reads_its_tool_results_as_text(tm
         assert not any(isinstance(m, ToolMessage) or getattr(m, "tool_calls", None) for m in history)
         assert any("returned]" in str(m.content) for m in history)
         assert "tool rounds are spent" in history[0].content   # the system prompt lists no tools
+
+
+class NoteFirstModel(ScriptedModel):
+    """After its tool results, announces the report instead of writing it; asked, writes it."""
+
+    asked: list = Field(default_factory=list)   # histories of the turns that asked for the report
+
+    def _generate(self, messages, stop=None, run_manager=None, **kwargs) -> ChatResult:
+        if self.tools and isinstance(messages[-1], ToolMessage):
+            note = "I now have a complete dataset. Let me compile the comprehensive fundamental report."
+            return ChatResult(generations=[ChatGeneration(message=AIMessage(content=note))])
+        if isinstance(messages[-1], HumanMessage) and messages[-1].content == WRITE_IT:
+            self.asked.append(messages)
+            return ChatResult(generations=[ChatGeneration(message=AIMessage(content=FULL))])
+        return super()._generate(messages, stop, run_manager, **kwargs)
+
+
+FULL = TEXT + "\n\n" + "Revenue, margins and cash flow, item by item. " * 20
+
+
+@pytest.mark.unit
+def test_an_analyst_that_ends_with_a_note_is_asked_once_for_its_report(tmp_path, monkeypatch, offline):
+    model = NoteFirstModel(structured=True)
+    graph = _graph(tmp_path, monkeypatch, model)
+
+    final_state, _ = graph.propagate("NVDA", TRADE_DATE)
+
+    for key in ("market_report", "news_report", "fundamentals_report"):
+        assert final_state[key] == FULL
+    assert len(model.asked) == 3   # once for each tool-using analyst, not again once it has written
+    for history in model.asked:
+        assert "tool rounds are spent" in history[0].content   # asked without tools
 
 
 @pytest.mark.unit
