@@ -75,3 +75,4 @@ class AgentState(MessagesState):
     portfolio_context: Annotated[str, "Caller-supplied holdings and cash, rendered at run start; empty when not provided"]
     fact_sheet: Annotated[str, "Caller-supplied figures computed by code from the run's data; empty when not provided"]
     events: Annotated[str, "Caller-supplied calendar of scheduled events ahead; empty when not provided"]
+    prior_record: Annotated[str, "Caller-supplied previous research record the Research Manager starts from; empty when not provided"]

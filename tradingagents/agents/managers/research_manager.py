@@ -84,6 +84,30 @@ def create_research_manager(llm, samples: int = 1):
 ---
 
 """ if fact_sheet else "")
+        prior = (state.get("prior_record") or "").strip()
+        # Each run used to judge from scratch, so a name near the line flipped between nights on a different draw of the
+        # same debate (CVS split Overweight/Hold/Overweight on identical inputs, 2026-11-12). Given the last record,
+        # the manager starts from its rating and needs new, material evidence to move.
+        previous = (f"""**Your previous research record** (an earlier run's verdict on this instrument):
+
+{prior}
+
+---
+
+""" if prior else "")
+        start = ("Start from the previous record's rating: it is a 3-5 year view, and a view that long does not change "
+                 "from one run to the next on the same evidence. Keep it unless this run's evidence holds something "
+                 "material the previous record did not have: newly reported results or filings, a change in guidance, "
+                 "a deal, a change of management, a regulatory or legal development, one of the falsifiers it named "
+                 "coming true, or a price move large enough to change what the price assumes (the fact sheet's implied "
+                 "growth moving by more than about two percentage points). A different reading of the same evidence, "
+                 "price trends, analysts' opinions and price targets, previews of events still ahead and sentiment are "
+                 "not reasons to change it. Begin the Rationale with \"What changed since the previous record:\" and "
+                 "either name the new evidence that moved the rating or say that nothing material changed."
+                 if prior else
+                 "Start from Hold: the market prices most stocks about right, and a rating off Hold claims it has this one "
+                 "wrong.")
+        move = "A rating off Hold, kept or new, stands only when" if prior else "Move off Hold only when"
         # Event timing is the risk team's: they get the calendar, so the rating rests on the investment case.
         timing = (" Timing around scheduled events (an earnings date, a vote, a macro release) is decided later by the"
                   " risk team, which has the calendar; rate the investment case, not the timing."
@@ -104,11 +128,11 @@ def create_research_manager(llm, samples: int = 1):
 - **Underweight**: likely overvalued: the price assumes more than the fundamentals plausibly deliver.
 - **Sell**: clearly overvalued or fundamentally impaired, well evidenced. Rare.
 
-Start from Hold: the market prices most stocks about right, and a rating off Hold claims it has this one wrong. Move off Hold only when you can state what the price assumes, where the fundamental evidence says otherwise, the margin of safety, and what would prove you wrong; if you cannot, the answer is Hold. A Hold takes the same work as any other rating: state what the price assumes and which evidence supports it and which cuts against it; "mixed fundamentals" alone is not a reason. Judge on fundamentals: what the price assumes (the fact sheet's reverse discounted cash flow), the business's record of growth, margins and returns on capital, its balance sheet and cash generation, and material news about the business. Price trends, technical indicators and social-media sentiment are for timing an entry, which is decided later; they are not evidence of mispricing and must not move the rating. Weigh the bull and bear cases on their merits, independent of which side spoke first or last.{timing}
+{start} {move} you can state what the price assumes, where the fundamental evidence says otherwise, the margin of safety, and what would prove you wrong; if you cannot, the answer is Hold. A Hold takes the same work as any other rating: state what the price assumes and which evidence supports it and which cuts against it; "mixed fundamentals" alone is not a reason. Judge on fundamentals: what the price assumes (the fact sheet's reverse discounted cash flow), the business's record of growth, margins and returns on capital, its balance sheet and cash generation, and material news about the business. Price trends, technical indicators and social-media sentiment are for timing an entry, which is decided later; they are not evidence of mispricing and must not move the rating. Weigh the bull and bear cases on their merits, independent of which side spoke first or last.{timing}
 
 ---
 
-{facts}**Debate History:**
+{previous}{facts}**Debate History:**
 {history}
 
 ## Output

@@ -21,6 +21,7 @@ class Propagator:
         fact_sheet: str = "",
         events: str = "",
         research: dict | None = None,
+        prior_record: str = "",
     ) -> dict[str, Any]:
         """Create the initial state for the agent graph.
 
@@ -45,6 +46,7 @@ class Propagator:
             "portfolio_context": portfolio_context,
             "fact_sheet": fact_sheet,
             "events": events,
+            "prior_record": prior_record,
             "investment_debate_state": InvestDebateState(
                 {
                     "bull_history": "",

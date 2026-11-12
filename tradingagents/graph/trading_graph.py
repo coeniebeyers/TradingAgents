@@ -141,7 +141,7 @@ class TradingAgentsGraph:
         return str(trade_date) if is_historical(trade_date) else None
 
     def _run_signature(self, asset_type: str, portfolio=None, fact_sheet: str = "", events: str = "",
-                       research: dict | None = None) -> str:
+                       research: dict | None = None, prior_record: str = "") -> str:
         """Run inputs that must invalidate a checkpoint if changed.
 
         Keyed into the checkpoint thread ID so a resume under a different analyst
@@ -165,6 +165,7 @@ class TradingAgentsGraph:
             *([f"events={hashlib.sha256(events.encode()).hexdigest()[:12]}"] if events else []),
             *([f"research={hashlib.sha256(json.dumps(research, sort_keys=True).encode()).hexdigest()[:12]}"]
               if research else []),
+            *([f"prior={hashlib.sha256(prior_record.encode()).hexdigest()[:12]}"] if prior_record else []),
             # The layout itself: a checkpoint saved when analysts ran one after
             # another has pending nodes this graph no longer has, and one saved
             # before the Memory Log step would resume without the lessons.
@@ -174,7 +175,7 @@ class TradingAgentsGraph:
         ])
 
     def propagate(self, company_name, trade_date, asset_type: str = "stock", portfolio=None, fact_sheet: str = "",
-                  events: str = "", research: dict | None = None):
+                  events: str = "", research: dict | None = None, prior_record: str = ""):
         """Run the trading agents graph for a company on a specific date.
 
         ``asset_type`` selects between the stock pipeline (default) and the
@@ -203,6 +204,10 @@ class TradingAgentsGraph:
         ``research`` is a stored research record, ``{"rating": ..., "plan": ...}``, which the "plan" pipeline
         starts from: the trader, risk team and Portfolio Manager plan how to act on it in this book, and the
         rating stays the record's.
+
+        ``prior_record`` is the caller's previous research record for this instrument (its date, rating and case):
+        the Research Manager starts from that rating and changes it only on material new evidence, so a 3-5 year view
+        doesn't flip on a different draw of the same debate. Empty leaves the run blind to it, as before.
         """
         trade_date = _validate_trade_date(trade_date)
         if self.config.get("pipeline") == "plan" and not (research and research.get("plan")):
@@ -210,18 +215,19 @@ class TradingAgentsGraph:
 
         with run_config(self.config), \
                 self.checkpoint_scope(company_name, trade_date, asset_type, portfolio, fact_sheet,
-                                      events, research) as thread_id_value:
+                                      events, research, prior_record) as thread_id_value:
             from tradingagents.dataflows import snapshot
 
             snapshot.check_date(trade_date)
             return self._run_graph(
                 company_name, trade_date, asset_type=asset_type,
                 checkpoint_thread_id=thread_id_value, portfolio=portfolio, fact_sheet=fact_sheet, events=events,
-                research=research,
+                research=research, prior_record=prior_record,
             )
 
     def begin_checkpoint(self, company_name, trade_date, asset_type: str = "stock", portfolio=None,
-                         fact_sheet: str = "", events: str = "", research: dict | None = None) -> str | None:
+                         fact_sheet: str = "", events: str = "", research: dict | None = None,
+                         prior_record: str = "") -> str | None:
         """Recompile the graph with a per-ticker checkpointer and return the
         ``thread_id`` to inject into the stream/invoke ``config`` (or ``None``
         when checkpointing is disabled).
@@ -235,7 +241,7 @@ class TradingAgentsGraph:
         self._resuming = False
         if not self.config.get("checkpoint_enabled"):
             return None
-        signature = self._run_signature(asset_type, portfolio, fact_sheet, events, research)
+        signature = self._run_signature(asset_type, portfolio, fact_sheet, events, research, prior_record)
         self._checkpointer_ctx = get_checkpointer(self.config["data_cache_dir"], company_name)
         saver = self._checkpointer_ctx.__enter__()
         self.graph = self.workflow.compile(checkpointer=saver)
@@ -270,20 +276,22 @@ class TradingAgentsGraph:
 
     @contextmanager
     def checkpoint_scope(self, company_name, trade_date, asset_type: str = "stock", portfolio=None, fact_sheet: str = "",
-                         events: str = "", research: dict | None = None):
+                         events: str = "", research: dict | None = None, prior_record: str = ""):
         """Context-manager form of begin/end_checkpoint for the propagate path."""
         try:
-            yield self.begin_checkpoint(company_name, trade_date, asset_type, portfolio, fact_sheet, events, research)
+            yield self.begin_checkpoint(company_name, trade_date, asset_type, portfolio, fact_sheet, events, research,
+                                        prior_record)
         finally:
             self.end_checkpoint()
 
     def clear_checkpoint_on_success(self, company_name, trade_date, asset_type: str = "stock", portfolio=None,
-                                    fact_sheet: str = "", events: str = "", research: dict | None = None):
+                                    fact_sheet: str = "", events: str = "", research: dict | None = None,
+                                    prior_record: str = ""):
         """Drop a completed run's checkpoint so a later run starts fresh (#1249)."""
         if self.config.get("checkpoint_enabled"):
             clear_checkpoint(
                 self.config["data_cache_dir"], company_name, str(trade_date),
-                self._run_signature(asset_type, portfolio, fact_sheet, events, research),
+                self._run_signature(asset_type, portfolio, fact_sheet, events, research, prior_record),
             )
 
     def run_settings(self) -> dict:
@@ -327,7 +335,7 @@ class TradingAgentsGraph:
         return Path(self.config["results_dir"]) / "reports" / f"{safe_ticker_component(ticker)}_{stamp}"
 
     def create_run_state(self, company_name, trade_date, asset_type: str = "stock", portfolio=None, fact_sheet: str = "",
-                         events: str = "", research: dict | None = None):
+                         events: str = "", research: dict | None = None, prior_record: str = ""):
         """Build a run's initial state; propagate() and the CLI both start here.
 
         Injects the resolved instrument identity for every agent (#814). The
@@ -343,6 +351,7 @@ class TradingAgentsGraph:
             fact_sheet=fact_sheet,
             events=events,
             research=research,
+            prior_record=prior_record,
         )
 
     def _memory_step(self, state):
@@ -415,10 +424,10 @@ class TradingAgentsGraph:
 
     def _run_graph(self, company_name, trade_date, asset_type: str = "stock",
                    checkpoint_thread_id: str | None = None, portfolio=None, fact_sheet: str = "",
-                   events: str = "", research: dict | None = None):
+                   events: str = "", research: dict | None = None, prior_record: str = ""):
         """Execute the graph and write the resulting state to disk and memory log."""
         init_agent_state = self.create_run_state(company_name, trade_date, asset_type, portfolio, fact_sheet, events,
-                                                 research)
+                                                 research, prior_record)
         args = self.propagator.get_graph_args()
 
         # Inject the checkpoint thread_id (from checkpoint_scope) so the same
