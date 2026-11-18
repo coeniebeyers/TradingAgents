@@ -280,16 +280,25 @@ def _missing_filing(cik: str, us_gaap: dict, as_of_date: str) -> str:
         filings = [(filed, form, period) for form, filed, period
                    in zip(recent["form"], recent["filingDate"], recent["reportDate"])
                    if form.startswith(_PERIODIC_FORMS) and filed <= as_of_date]
+        # An 8-K under Item 2.02 ("Results of Operations") is the results press release, filed on results day; the
+        # 10-Q with the structured figures can follow days later (NVDA's Q3 FY27: release 2026-11-17, no 10-Q a day on).
+        results = [filed for form, filed, items in zip(recent["form"], recent["filingDate"],
+                                                       recent.get("items") or [""] * len(recent["form"]))
+                   if form == "8-K" and "2.02" in (items or "") and filed <= as_of_date]
     except (VendorUnavailableError, KeyError, TypeError):
         return ""  # the statement stands on its own; the check is a courtesy
-    if not filings:
-        return ""
-    filed, form, period = max(filings)
     newest_fact = _newest_filed(us_gaap, as_of_date)
-    if filed <= newest_fact:
-        return ""
-    return (f"# Missing: the {form} for the period ended {period}, filed {filed}, is not yet in SEC's"
-            f" structured data, so this table stops before it\n")
+    if filings:
+        filed, form, period = max(filings)
+        if filed > newest_fact:
+            return (f"# Missing: the {form} for the period ended {period}, filed {filed}, is not yet in SEC's"
+                    f" structured data, so this table stops before it\n")
+    announced = max(results, default="")
+    if announced > max([newest_fact] + [f for f, _, _ in filings]):
+        return (f"# Missing: newer results were announced in an 8-K filed {announced} (a results press release), but the"
+                f" quarterly report with their figures is not filed yet, so this table stops before them; take the newest"
+                f" quarter's figures from that announcement or the news\n")
+    return ""
 
 
 def _statement(kind: str, ticker: str, freq: str, as_of_date: str, title: str) -> str:

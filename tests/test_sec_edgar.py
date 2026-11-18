@@ -379,9 +379,10 @@ def test_each_line_states_its_change_on_a_year_earlier(monkeypatch):
 
 
 def _with_submissions(monkeypatch, filings):
-    """Serve the fixture facts plus a filing list of (form, filed, period)."""
-    submissions = {"filings": {"recent": {"form": [f for f, _, _ in filings], "filingDate": [d for _, d, _ in filings],
-                                          "reportDate": [p for _, _, p in filings]}}}
+    """Serve the fixture facts plus a filing list of (form, filed, period[, items])."""
+    submissions = {"filings": {"recent": {"form": [f[0] for f in filings], "filingDate": [f[1] for f in filings],
+                                          "reportDate": [f[2] for f in filings],
+                                          "items": [f[3] if len(f) > 3 else "" for f in filings]}}}
     monkeypatch.setattr(sec_edgar, "_fetch_json", lambda url: TICKER_MAP if "company_tickers" in url
                         else submissions if "submissions" in url else FACTS)
 
@@ -395,6 +396,22 @@ def test_a_report_sec_has_not_yet_put_into_its_facts_is_named(monkeypatch):
     out = sec_edgar.get_income_statement("AAPL", "quarterly", "2026-06-01")
 
     assert "Missing: the 10-Q for the period ended 2026-03-31, filed 2026-04-15" in out
+
+
+@pytest.mark.unit
+def test_results_announced_before_their_quarterly_report_are_named(monkeypatch):
+    """NVDA's Q3 FY27 results came in an 8-K on 2026-11-17 with the 10-Q still unfiled a day later, so its table ended at
+    the quarter before while the news discussed the new one."""
+    # The newest fact in the fixture was filed 2026-01-29, with that day's 10-Q; the release came after it.
+    _with_submissions(monkeypatch, [("8-K", "2026-04-28", "2026-04-28", "2.02,9.01"), ("10-Q", "2026-01-29", "2025-12-31"),
+                                    ("8-K", "2026-03-02", "2026-03-02", "5.02")])
+
+    out = sec_edgar.get_income_statement("AAPL", "quarterly", "2026-05-01")
+
+    assert "Missing: newer results were announced in an 8-K filed 2026-04-28" in out
+    assert "take the newest quarter's figures from that announcement or the news" in out
+    later = sec_edgar.get_income_statement("AAPL", "quarterly", "2026-04-27")   # before the announcement
+    assert "Missing" not in later
 
 
 @pytest.mark.unit
